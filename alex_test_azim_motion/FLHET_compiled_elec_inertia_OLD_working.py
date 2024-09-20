@@ -191,7 +191,7 @@ def gradient(y, x):
     return dp_dz
 
 
-#@njit
+@njit
 def compute_mu(fP, fBarr, fESTAR, wall_inter_type:str, fR1, fR2, fMi, fx_center, fLTHR, fKEL, falpha_B):
     
     ng = fP[0, :]
@@ -520,16 +520,17 @@ def heatFluxImplicit(fP, fBarr, wall_inter_type:str, fx_center, fESTAR, fMi, fR1
 
     return TDMA(a_lowerDiag[1:], b_mainDiag, c_upperDiag[:-1], d_solutionVector)
 
+@njit
+def simpson(y, x):
+    # y is the vector of values, x is the vector of corresponding x values
+    dx = x[1] - x[0]
+    return dx/3 * np.sum(y[0:-1:2] + 4*y[1::2] + y[2::2])
 
 
 # Compute the Current
-# @njit
+@njit
 def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1, fR2, fLTHR, fKEL, falpha_B, fDelta_x, fA0, fRext, fDelta_t, old_curr = True, n_old_U_ey_old = 0.0, empirical_term_interp_y = 0.0, empirical_term_interp_x = 0.0):
 
-    from scipy import integrate
-    from scipy import interpolate
-
-    # TODO: This is already computed! Maybe move to the source
     #############################################################
     #       We give a name to the vars to make it more readable
     #############################################################
@@ -573,7 +574,9 @@ def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1,
         # print("1 vi: ", (phy_const.m_e / phy_const.e * nu_m * vi)[-4:])
         # print("1 div_p: ", (div_p / (ni))[-4:])
         # print("1 div_p: ", ((div_p / (ni * phy_const.e))[-4:]))
-        value_simpson_1  = integrate.simpson(Term_1 , x=fx_center)
+        # value_simpson_1  = integrate.simpson(Term_1 , x=fx_center)
+        value_simpson_1 = simpson(Term_1, fx_center)
+        
         top = fV + value_simpson_1
         # print("1 value_simpson_1", value_simpson_1)
         # print("1 top: ", top)
@@ -581,7 +584,8 @@ def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1,
 
         Term_2 = phy_const.m_e / phy_const.e * nu_m / ni
         # print("1 Term_2: ", Term_2[-4:])
-        value_simpson_2  = integrate.simpson(Term_2 , x=fx_center)
+        # value_simpson_2  = integrate.simpson(Term_2 , x=fx_center)
+        value_simpson_2 = simpson(Term_2, fx_center)
         # print("1 value_simpson_2", value_simpson_2)
         bottom = phy_const.e * fA0 * fRext + value_simpson_2
         # print("1 bottom", bottom)
@@ -621,7 +625,10 @@ def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1,
         # print("2 RieY: ", (RieY / (phy_const.e * ni))[-4:])
         # print("2 div_mnuxuy: ", (div_mnuxuy / (phy_const.e * ni))[-4:])
 
-        value_simpson_1 = integrate.simpson(Term_1 , x=fx_center)
+        # value_simpson_1 = integrate.simpson(Term_1 , x=fx_center)
+        # Term_1 = linear_extrapolation_end(Term_1, 1)
+        Term_1 = np.append(Term_1, Term_1[-1] + Term_1[-1] - Term_1[-2])
+        value_simpson_1 = simpson(Term_1, np.append(fx_center, fx_center[-1] + fx_center[1] - fx_center[0]))
         top = fV + value_simpson_1
         # print("2 value_simpson_1", value_simpson_1)
         # print("2 top: ", top)
@@ -631,19 +638,22 @@ def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1,
         # print("2 fBarrr: ", (fBarr / ni)[-4:])
         # print("2 div_uey: ", (div_uey / (phy_const.e * ni))[-4:])
 
-        value_simpson_2 = integrate.simpson(Term_2 , x=fx_center)
+        # value_simpson_2 = integrate.simpson(Term_2 , x=fx_center)
+        Term_2 = np.append(Term_2, Term_2[-1] + Term_2[-1] - Term_2[-2])
+        # Term_2 = linear_extrapolation_end(Term_2, 1)
+        value_simpson_2 = simpson(Term_2, np.append(fx_center, fx_center[-1] + fx_center[1] - fx_center[0]))
         # print("2 value_simpson_2", value_simpson_2)
         bottom = phy_const.e * fA0 * fRext + value_simpson_2
         # print("2 bottom", bottom)
 
         I0 = top / bottom  # Discharge current density
         # print(I0)
-        if np.any(np.abs(I0) > 1e24):
-            # print(np.shape(fBarr), np.shape(ni), np.shape(div_uey))
-            np.savetxt("bottom_values.txt", np.stack([fBarr.T, ni.T, div_uey.T], axis=0))
-            print(I0, top, bottom)
-            if np.any(np.abs(I0) > 1e25):
-                sys.exit()
+        # if np.any(np.abs(I0) > 1e24):
+        #     # print(np.shape(fBarr), np.shape(ni), np.shape(div_uey))
+        #     np.savetxt("bottom_values.txt", np.stack([fBarr.T, ni.T, div_uey.T], axis=0))
+        #     print(I0, top, bottom)
+        #     if np.any(np.abs(I0) > 1e25):
+        #         sys.exit()
         I0 = (I0 * phy_const.e * fA0)
 
     return I0
@@ -799,6 +809,7 @@ def SaveResults(fResults, fP, fU, fP_Inlet, fP_Outlet, fJ, fV, fBarr, fx_center,
 #                                                                                                        #
 ##########################################################################################################
 
+@njit
 def SmoothInitialTemperature(bulk_array:np.ndarray, Toutlet:float)->np.ndarray:
     """Return a smoothed version of the array bulkarray. It contains the bulk e-
     initial temperature. It smoothes the possible jump between this bulk
@@ -817,6 +828,7 @@ def SmoothInitialTemperature(bulk_array:np.ndarray, Toutlet:float)->np.ndarray:
     
     return bulk_copy
 
+# @njit
 def linear_extrapolation_multi(vec, num_points=3):
     # Use at least two points for linear extrapolation
     if len(vec) < 2:
@@ -993,8 +1005,8 @@ def main(fconfigfile):
     #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
     # with open('./Results/half_gradPxy_emp_term_30/Data/MacroscopicVars_000003.pkl', 'rb') as f:
     #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
-    # with open('./Results/heat_flux_1/Data/MacroscopicVars_000045.pkl', 'rb') as f:
-    #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
+    with open('./Results/heat_flux_8/Data/MacroscopicVars_000100.pkl', 'rb') as f:
+            [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
 
     alpha_B_init = compute_alphaB_array(x_center, 1.6238e-2 , 2.4560e-2, LTHR, msp.NBPOINTS_INIT)
 
@@ -1019,10 +1031,10 @@ def main(fconfigfile):
         P[4, :] = Ve # Initial Ve
 
 
-        plt.figure()
-        plt.plot(tau_xy[1:len(tau_xy)-1]*Ue_y)
-        plt.plot(heat_flux)
-        plt.show()
+        # plt.figure()
+        # plt.plot(tau_xy[1:len(tau_xy)-1]*Ue_y)
+        # plt.plot(heat_flux)
+        # plt.show()
 
         # P[5, :] = P_init[4, :]*wce_init/nu_m_init    # Initial Ue_y
         try:
@@ -1076,7 +1088,7 @@ def main(fconfigfile):
 
     if TIMESCHEME == "Forward Euler":
         # J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t)
-        J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old, empirical_term_interp_y)
+        J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old, empirical_term_interp_y, empirical_term_interp_x)
         # J_1_temp = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old, empirical_term_interp_y)
         print(f"J_1 = {J:.3e} A")
         # print(f"J_1_temp = {J_1_temp:.3e} A")
@@ -1096,10 +1108,10 @@ def main(fconfigfile):
                     "\tI = {:.4f}~A".format(J),
                     "\tJ = {:.3e} A/m2".format(J/A0),
                 )
-                J_0_temp = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t)
-                J_1_temp = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old)
-                print(f"J_0_temp = {J_0_temp:.3e} A")
-                print(f"J_1_temp = {J_1_temp:.3e} A")
+                # J_0_temp = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t)
+                # J_1_temp = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old)
+                # print(f"J_0_temp = {J_0_temp:.3e} A")
+                # print(f"J_1_temp = {J_1_temp:.3e} A")
                 print(f"I_calc = {P[1,10]* phy_const.e * A0 * (P[2,10] - P[4,10]):.3e} A")
                 # Another way of processing J_d which is equivalent to J_d = I / A0
                 #j_of_x = P[1,:]*phy_const.e*(P[2,:] - P[4,:])
@@ -1151,7 +1163,7 @@ def main(fconfigfile):
             # Compute the current
             # J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t)
             # J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old)
-            J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old, empirical_term_interp_y)
+            J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old, empirical_term_interp_y, empirical_term_interp_x)
 
             
             # print(f"J_1 = {J:.3e} A")
