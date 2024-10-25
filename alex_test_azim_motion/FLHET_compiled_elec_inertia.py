@@ -92,8 +92,8 @@ def PrimToCons(fP, fU, fMi):
     fU[0, :] = fP[0, :] * fMi # rhog
     fU[1, :] = fP[1, :] * fMi # rhoi
     fU[2, :] = fP[2, :] * fP[1, :] * fMi # rhoiUi
-    fU[3, :] = 0.5 * phy_const.m_e * fP[1, :] * fP[5, :]**2 + 3.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :]  # (rhoeUe_y^2 +  3/2*ni*e*Te)
-    fU[4, :] = phy_const.m_e * fP[1, :] * fP[5, :]            # rhoeUe_y
+    fU[3, :] = 3.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :]  # 3/2*ni*e*Te
+    fU[4, :] = phy_const.m_e * fP[1, :] * fP[5, :]            # rho e Ue_y
 
 
 @njit
@@ -101,7 +101,8 @@ def ConsToPrim(fU, fP, fMi, fA0, fJ=0.0):
     fP[0, :] = fU[0, :] / fMi               # ng
     fP[1, :] = fU[1, :] / fMi               # ni
     fP[2, :] = fU[2, :] / fU[1, :]          # Ui = rhoUi/rhoi
-    fP[3, :] = 2.0 / 3.0 * ( fU[3, :] - 0.5 * fU[4, :]**2 / ( phy_const.m_e * fU[1, :] / fMi) ) / (phy_const.e * fP[1, :])  # Te
+    # fP[3, :] = 2.0 / 3.0 * ( fU[3, :] - 0.5 * fU[4, :]**2 / ( phy_const.m_e * fU[1, :] / fMi) ) / (phy_const.e * fP[1, :])  # Te
+    fP[3, :] = 2.0 / 3.0 * fU[3, :] / (phy_const.e * fP[1, :])  # Te
     fP[4, :] = fP[2, :] - fJ / (fA0 * phy_const.e * fP[1, :])   # ve
     fP[5, :] = fU[4, :] / (phy_const.m_e * fU[1, :] / fMi )     # Ue_y
 
@@ -112,8 +113,9 @@ def InviscidFlux(fP, fF, fVG, fMi):
     fF[1, :] = fP[1, :] * fP[2, :] * fMi # rho_i*v_i
     fF[2, :] = (
         fMi* fP[1, :] * fP[2, :] * fP[2, :] + fP[1, :] * phy_const.e * fP[3, :]
-    )  # M*n_i*v_i**2 + p_e
-    fF[3, :] = (5.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :] + 0.5 * phy_const.m_e * fP[1, :] * fP[5, :]**2) * fP[4, :]  # (1/2*rhoe*uey^2*v_e + 5/2n_i*e*T_e*v_e)
+    )  # M*n_i*v_i**2 + n_i*e*T_e
+    fF[3, :] = 5.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :] * fP[4, :]# 5/2n_i*e*T_e*v_e
+    # fF[3, :] = (5.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :] + 0.5 * phy_const.m_e * fP[1, :] * fP[5, :]**2) * fP[4, :]  # (5/2n_i*e*T_e*v_e + 1/2*rhoe*uey^2*v_e)
     fF[4, :] = phy_const.m_e * fP[1, :] * fP[5, :] * fP[4, :]            # (rhoe*uey*uex)
 
 
@@ -290,24 +292,21 @@ def Source(fP, fS, fBarr, fisSourceImposed, fenableIonColl, wall_inter_type:str,
     #div_u   = gradient(ve, d=Delta_x)             # To be used with 3./2. in line 160 and + phy_const.e*ni*Te*div_u  in line 231
     div_p = gradient(phy_const.e*ni*Te, fx_center) # To be used with 5./2 and + div_p*ve in line 231    
 
-    E_x = - Ue_y * fBarr - phy_const.m_e / phy_const.e * nu_m * ve - div_p / (phy_const.e * ni)
-
     fS[0, :] = (-d_IC * Siz_arr + nu_iw * ni) * fMi # Gas Density
     fS[1, :] = (Siz_arr - nu_iw * ni) * fMi # Ion Density
     fS[2, :] = (
         d_IC * Siz_arr * fVG * fMi
         # - (phy_const.e / (mu_eff[:] * fMi)) * ni * ve
-        - (phy_const.m_e * ni * nu_m * ve)
+        # - (phy_const.m_e * ni * nu_m * ve) 
         - phy_const.e * ni * fBarr * Ue_y
-        - nu_iw * ni * vi * fMi
-        )  # Momentum
+        - nu_iw * ni * fMi * vi
+        )  # ion Momentum
     fS[3,:] = (
         - d_IC * Siz_arr * Eion * gamma_i * phy_const.e
         - nu_ew * ni * Ew * phy_const.e
-        - phy_const.m_e * ni * nu_m * (ve**2 + Ue_y**2)
-        - phy_const.e * ni * E_x * ve
-        + phy_const.e * ni * fBarr * ve * Ue_y
-        + Siz_arr * phy_const.e * 10.
+        + div_p * ve
+        + 0.5 * phy_const.m_e * Ue_y**2 * Siz_arr # electron energy 
+        + 1.5 * Siz_arr * phy_const.e * 10. # electron injection energy 
     )
     fS[4, :] = (
         - (phy_const.m_e * ni * nu_m * Ue_y)
@@ -558,9 +557,8 @@ def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1,
 
     div_p = gradient(ni*Te, fx_center) # To be used with 5./2 and + div_p*ve in line 231    
 
-    Term_1 = + Ue_y * fBarr + phy_const.m_e / phy_const.e * nu_m * vi + div_p / (ni)
+    Term_1 = Ue_y * fBarr + phy_const.m_e / phy_const.e * nu_m * vi + div_p / ni
 
-    
     # value_trapz_1 = (
     #     np.sum(
     #         ( (Term_1)[1:] + (Term_1)[:-1] ) * (fx_center[1:] - fx_center[:-1]) / 2.0

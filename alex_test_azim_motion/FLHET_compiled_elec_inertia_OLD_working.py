@@ -75,7 +75,7 @@ def compute_alphaB_array(fxcenter, falphaB1, falphaB2, fLTHR, fNBPOINTS_INIT):
     return alpha_B_smooth
 
 
-@njit
+# @njit
 def compute_imposed_Siz(fx_center, fSIZMAX, fLSIZ1, fLSIZ2):
     xm = (fLSIZ1 + fLSIZ2)/2
     Siz = fSIZMAX*np.cos(math.pi*(fx_center - xm)/(fLSIZ2 - fLSIZ1))
@@ -87,7 +87,7 @@ def compute_imposed_Siz(fx_center, fSIZMAX, fLSIZ1, fLSIZ2):
 #           Formulas defining our model                  #
 ##########################################################
 
-@njit
+# @njit
 def PrimToCons(fP, fU, fMi):
     fU[0, :] = fP[0, :] * fMi # rhog
     fU[1, :] = fP[1, :] * fMi # rhoi
@@ -96,7 +96,7 @@ def PrimToCons(fP, fU, fMi):
     fU[4, :] = phy_const.m_e * fP[1, :] * fP[5, :]            # rhoeUe_y
 
 
-@njit
+# @njit
 def ConsToPrim(fU, fP, fMi, fA0, fJ=0.0):
     fP[0, :] = fU[0, :] / fMi               # ng
     fP[1, :] = fU[1, :] / fMi               # ni
@@ -106,7 +106,7 @@ def ConsToPrim(fU, fP, fMi, fA0, fJ=0.0):
     fP[5, :] = fU[4, :] / (phy_const.m_e * fU[1, :] / fMi )     # Ue_y
 
 
-# @njit
+# # @njit
 def InviscidFlux(fP, fF, fVG, fMi, tau_xy = 0., heat_flux_vec = 0.):
     fF[0, :] = fP[0, :] * fVG * fMi # rho_g*v_g
     fF[1, :] = fP[1, :] * fP[2, :] * fMi # rho_i*v_i
@@ -140,7 +140,7 @@ def CompareIonizationTypes(fx_center, fP, fSIZMAX, fLSIZ1, fLSIZ2):
     plt.show()
 
 
-@njit
+# @njit
 def CumTrapz(y, d):
     n = y.shape[0]
     cuminteg = np.zeros(y.shape, dtype=float)
@@ -151,7 +151,7 @@ def CumTrapz(y, d):
     return cuminteg
 
 
-@njit
+# @njit
 def IntegralSiz(fx_center, fSIZMAX, fLSIZ1, fLSIZ2):
 
     xm = (fLSIZ1 + fLSIZ2)/2
@@ -163,7 +163,7 @@ def IntegralSiz(fx_center, fSIZMAX, fLSIZ1, fLSIZ2):
     return integ 
 
 
-@njit
+# @njit
 def InitNeutralDensity(fx_center, fng_cathode, fVG, fP, fisSourceImposed, fSIZMAX, fLSIZ1, fLSIZ2):
     Eion = 12.1
     ni = fP[1,:]
@@ -181,7 +181,7 @@ def InitNeutralDensity(fx_center, fng_cathode, fVG, fP, fisSourceImposed, fSIZMA
     return ng_init
 
 
-@njit
+# @njit
 def gradient(y, x):
     dp_dz = np.zeros(y.shape)
     dp_dz[1:-1] = (y[2:] - y[:-2]) / (x[2:] - x[:-2])
@@ -191,7 +191,7 @@ def gradient(y, x):
     return dp_dz
 
 
-@njit
+# @njit
 def compute_mu(fP, fBarr, fESTAR, wall_inter_type:str, fR1, fR2, fMi, fx_center, fLTHR, fKEL, falpha_B):
     
     ng = fP[0, :]
@@ -218,7 +218,7 @@ def compute_mu(fP, fBarr, fESTAR, wall_inter_type:str, fR1, fR2, fMi, fx_center,
     return mu_eff_arr
 
 
-@njit
+# # @njit
 def Source(fP, fS, fBarr, fisSourceImposed, fenableIonColl, wall_inter_type:str,fx_center, fimposed_Siz, fESTAR, fMi, fR1, fR2, fLTHR, fKEL, falpha_B, fVG, fDelta_x, empirical_term_interp_y = 0.0, empirical_term_interp_x = 0.0):
 
     #############################################################
@@ -290,8 +290,13 @@ def Source(fP, fS, fBarr, fisSourceImposed, fenableIonColl, wall_inter_type:str,
         )  # Electron momentum - transfer collision frequency
     
     if np.any(empirical_term_interp_y) != 0.0:
-        RieY = empirical_term_interp_y
+        RieY = np.copy(empirical_term_interp_y)
         RieX = empirical_term_interp_x
+        # print(len(RieY))
+        # RieY -= calculate_Rei(ni, Te, Ue_y)
+        RieY -= Rei_sat(ni, Te, vi, fDelta_x[0], fMi)
+
+        # print(len(RieY))
     else:
         RieY = -phy_const.m_e * nu_m * ni * Ue_y
         RieX = -phy_const.m_e * ni * nu_m * ve
@@ -330,7 +335,7 @@ def Source(fP, fS, fBarr, fisSourceImposed, fenableIonColl, wall_inter_type:str,
     #+ phy_const.e*ni*Te*div_u  #- gradI_term*ni*Te*grdI          # Energy in Joule
 
 
-@njit
+# @njit
 def heatFlux(fP, fS, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1, fR2, fLTHR, fKEL, falpha_B, fDelta_x):
 
     #############################################################
@@ -410,7 +415,7 @@ def heatFlux(fP, fS, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1, fR2
     #+ phy_const.e*ni*Te*div_u  #- gradI_term*ni*Te*grdI          # Energy in Joule
 
 
-@njit
+# @njit
 def TDMA(a,b,c,d):      # Thomas algorithm for the implicit solver a = Lower Diag, b = Main Diag, c = Upper Diag, d = solution vector
     n = len(d)
     w= np.zeros(n-1,float)
@@ -429,7 +434,7 @@ def TDMA(a,b,c,d):      # Thomas algorithm for the implicit solver a = Lower Dia
         p[i-1] = g[i-1] - w[i-1]*p[i]
     return p
 
-@njit
+# @njit
 def heatFluxImplicit(fP, fBarr, wall_inter_type:str, fx_center, fESTAR, fMi, fR1, fR2, fLTHR, fKEL, falpha_B, fDelta_x, fDelta_t):
 
 
@@ -520,15 +525,29 @@ def heatFluxImplicit(fP, fBarr, wall_inter_type:str, fx_center, fESTAR, fMi, fR1
 
     return TDMA(a_lowerDiag[1:], b_mainDiag, c_upperDiag[:-1], d_solutionVector)
 
-@njit
+# @njit
 def simpson(y, x):
     # y is the vector of values, x is the vector of corresponding x values
     dx = x[1] - x[0]
     return dx/3 * np.sum(y[0:-1:2] + 4*y[1::2] + y[2::2])
 
+# # @njit
+def calculate_Rei(ne, Te, uey):
+    lambda_D = ((phy_const.epsilon_0 * Te * phy_const.elementary_charge)/(ne * phy_const.elementary_charge**2))**.5
+    omega_pe = (ne * phy_const.elementary_charge)/(phy_const.electron_mass * phy_const.epsilon_0)**.5
+    Ewave = 1.5 * ne * Te * phy_const.elementary_charge / 432
+    vTe = (2 * Te * phy_const.elementary_charge / phy_const.electron_mass)**.5
+    Rei_Maxwellian = 4 * (2*np.pi)**.5 * omega_pe * lambda_D * Ewave * uey / vTe**3 * np.exp(-(uey / vTe)**2)
+    return Rei_Maxwellian
+
+def Rei_sat(ne, Te, vix, dx, mass):
+#    print(dx, mass)
+   grad_term = np.gradient(vix * ne * Te, dx)
+   cs = phy_const.elementary_charge * Te / mass
+   return phy_const.elementary_charge/(16*6**.5 * cs) * np.abs(grad_term)
 
 # Compute the Current
-@njit
+# # @njit
 def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1, fR2, fLTHR, fKEL, falpha_B, fDelta_x, fA0, fRext, fDelta_t, old_curr = True, n_old_U_ey_old = 0.0, empirical_term_interp_y = 0.0, empirical_term_interp_x = 0.0):
 
     #############################################################
@@ -608,12 +627,21 @@ def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1,
 
         if np.any(empirical_term_interp_y) != 0:
             # use the interpolated empirical term
-            RieY = empirical_term_interp_y
+            RieY = np.copy(empirical_term_interp_y)
+            # plt.figure()
+            # plt.plot(RieY, label="1")
             RieX = empirical_term_interp_x
+            # RieY -= calculate_Rei(ni, Te, Ue_y)
+            RieY -= Rei_sat(ni, Te, vi, fDelta_x[0], fMi)
+
+            # plt.plot(RieY, label="2")
+            # plt.legend()
+            # plt.show()
         else:
             RieX = -phy_const.m_e * nu_m * ni * ve
             RieY = -phy_const.m_e * nu_m * ni * Ue_y
 
+        from scipy import integrate
 
         Term_1 = Ue_y * fBarr + div_p / (ni) - RieX / (phy_const.e * ni) + vi * fBarr
         Term_1 += RieY / (phy_const.e * ni) - div_mnuxuy / (phy_const.e * ni) - dt_m_n_uey / (phy_const.e * ni)
@@ -625,40 +653,43 @@ def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1,
         # print("2 RieY: ", (RieY / (phy_const.e * ni))[-4:])
         # print("2 div_mnuxuy: ", (div_mnuxuy / (phy_const.e * ni))[-4:])
 
-        # value_simpson_1 = integrate.simpson(Term_1 , x=fx_center)
-        # Term_1 = linear_extrapolation_end(Term_1, 1)
+        value_simpson_1 = integrate.simpson(Term_1 , x=fx_center)
         Term_1 = np.append(Term_1, Term_1[-1] + Term_1[-1] - Term_1[-2])
-        value_simpson_1 = simpson(Term_1, np.append(fx_center, fx_center[-1] + fx_center[1] - fx_center[0]))
+        value_simpson_11 = simpson(Term_1, np.append(fx_center, fx_center[-1] + fx_center[1] - fx_center[0]))
         top = fV + value_simpson_1
-        # print("2 value_simpson_1", value_simpson_1)
-        # print("2 top: ", top)
 
         Term_2 = fBarr / ni - phy_const.electron_mass * div_uey / (phy_const.e * ni)
         # print("2 Term_2: ", Term_2[-4:])
         # print("2 fBarrr: ", (fBarr / ni)[-4:])
         # print("2 div_uey: ", (div_uey / (phy_const.e * ni))[-4:])
 
-        # value_simpson_2 = integrate.simpson(Term_2 , x=fx_center)
+        value_simpson_2 = integrate.simpson(Term_2 , x=fx_center)
         Term_2 = np.append(Term_2, Term_2[-1] + Term_2[-1] - Term_2[-2])
         # Term_2 = linear_extrapolation_end(Term_2, 1)
-        value_simpson_2 = simpson(Term_2, np.append(fx_center, fx_center[-1] + fx_center[1] - fx_center[0]))
+        # value_simpson_2 = simpson(Term_2, np.append(fx_center, fx_center[-1] + fx_center[1] - fx_center[0]))
         # print("2 value_simpson_2", value_simpson_2)
         bottom = phy_const.e * fA0 * fRext + value_simpson_2
         # print("2 bottom", bottom)
 
         I0 = top / bottom  # Discharge current density
         # print(I0)
-        # if np.any(np.abs(I0) > 1e24):
-        #     # print(np.shape(fBarr), np.shape(ni), np.shape(div_uey))
-        #     np.savetxt("bottom_values.txt", np.stack([fBarr.T, ni.T, div_uey.T], axis=0))
-        #     print(I0, top, bottom)
-        #     if np.any(np.abs(I0) > 1e25):
-        #         sys.exit()
+        if np.any(np.abs(I0) > 1e24):
+            # print(np.shape(fBarr), np.shape(ni), np.shape(div_uey))
+            plt.figure()
+            plt.plot(RieY, label="2")
+            plt.plot(empirical_term_interp_y, label="empirical_term_interp_y")
+            plt.plot(calculate_Rei(ni, Te, Ue_y), label="calc")
+            plt.legend()
+            plt.show()
+            print(I0* phy_const.e * fA0, top, bottom)
+            print(value_simpson_1, value_simpson_11)
+            if np.abs(I0) > 1e25:
+                sys.exit()
         I0 = (I0 * phy_const.e * fA0)
 
     return I0
 
-@njit
+# # @njit
 def SetInlet(fP_In, fU_ghost, fP_ghost, fMi, fisSourceImposed, fMDOT, fA0, fVG, fTe_cath, fJ=0.0, moment=1):
 
     U_Bohm = np.sqrt(phy_const.e * fP_In[3] / fMi)
@@ -689,7 +720,7 @@ def SetInlet(fP_In, fU_ghost, fP_ghost, fMi, fisSourceImposed, fMDOT, fA0, fVG, 
     fP_ghost[5] = fU_ghost[4] / (phy_const.m_e * fU_ghost[1] / fMi )     # Ue_y 
 
 
-@njit
+# # @njit
 def SetOutlet(fP_In, fU_ghost, fP_ghost, fMi, fA0, fTe_Cath, J=0.0):
 
     fU_ghost[0] = fP_In[0] * fMi
@@ -711,7 +742,7 @@ def SetOutlet(fP_In, fU_ghost, fP_ghost, fMi, fA0, fTe_Cath, J=0.0):
 ##########################################################
 
 # TODO: These are vector. Better allocate them
-@njit
+# @njit
 def computeMaxEigenVal_e(fP, fMi):
 
     U_Bohm = np.sqrt(phy_const.e * fP[3, :] / fMi)
@@ -719,7 +750,7 @@ def computeMaxEigenVal_e(fP, fMi):
     return np.maximum(np.abs(U_Bohm - fP[4, :]) * 2, np.abs(U_Bohm + fP[4, :]) * 2)
 
 
-@njit
+# @njit
 def computeMaxEigenVal_i(fP, fMi):
 
     U_Bohm = np.sqrt(phy_const.e * fP[3, :] / fMi)
@@ -728,7 +759,7 @@ def computeMaxEigenVal_i(fP, fMi):
     return np.maximum(np.abs(U_Bohm - fP[2, :]), np.abs(U_Bohm + fP[2, :]))
 
 
-@njit
+# @njit
 def NumericalFlux(fP, fU, fF_cell, fF_interf, fNBPOINTS, fMi, fVG):
 
     # Compute the max eigenvalue
@@ -762,7 +793,7 @@ def NumericalFlux(fP, fU, fF_cell, fF_interf, fNBPOINTS, fMi, fVG):
     ) - 0.5 * lambda_max_e_12 * (fU[4, 1 : fNBPOINTS + 2] - fU[4, 0 : fNBPOINTS + 1])
 
 
-@njit
+# @njit
 def ComputeDelta_t(fP, fNBPOINTS, fMi, fCFL, fDelta_x):
 
     # Compute the max eigenvalue
@@ -809,7 +840,7 @@ def SaveResults(fResults, fP, fU, fP_Inlet, fP_Outlet, fJ, fV, fBarr, fx_center,
 #                                                                                                        #
 ##########################################################################################################
 
-@njit
+# @njit
 def SmoothInitialTemperature(bulk_array:np.ndarray, Toutlet:float)->np.ndarray:
     """Return a smoothed version of the array bulkarray. It contains the bulk e-
     initial temperature. It smoothes the possible jump between this bulk
@@ -828,7 +859,7 @@ def SmoothInitialTemperature(bulk_array:np.ndarray, Toutlet:float)->np.ndarray:
     
     return bulk_copy
 
-# @njit
+# # @njit
 def linear_extrapolation_multi(vec, num_points=3):
     # Use at least two points for linear extrapolation
     if len(vec) < 2:
@@ -930,16 +961,16 @@ def main(fconfigfile):
 
     try:
         empirical_term = np.loadtxt('empirical_term_add_5.txt')
-        # empirical_term = np.loadtxt('empirical_term_1.txt')
+        empirical_term = np.loadtxt('no_Rei.txt') 
         empirical_term_interp_y = np.interp(x_center, empirical_term[:, 0]/100, empirical_term[:, 1])
         print("Empirical term y loaded.")
         empirical_term_interp_x = np.interp(x_center, empirical_term[:, 0]/100, empirical_term[:, 2])
         print("Empirical term x loaded.")
         tau_xy_temp = np.interp(x_center, empirical_term[:, 0]/100, empirical_term[:, 3])
-        tau_xy = linear_extrapolation_multi(tau_xy_temp, 2)
+        tau_xy = linear_extrapolation_multi(tau_xy_temp, 2)*0
         print("tau_xy loaded")
         heat_flux_temp = np.interp(x_center, empirical_term[:, 0]/100, empirical_term[:, 4])
-        heat_flux = linear_extrapolation_multi(heat_flux_temp, 2)
+        heat_flux = linear_extrapolation_multi(heat_flux_temp, 2)*0
         print("heatflux loaded")
         # plt.savefig("tau_xy.png")
         # plt.close()
@@ -991,10 +1022,10 @@ def main(fconfigfile):
     # We initialize the primitive variables
     
     # with open('/home/petronio/Nextcloud_sync/code/FLHET1D/alex_test_azim_motion/Data/MacroscopicVars_000038.pkl', 'rb') as f:
-    # with open('/home/petronio/Nextcloud_sync/code/FLHET1D/alex_test_azim_motion/Results/testInertia_Initialization_NoConstantCurrent_NewSource_restart_interp/Data/MacroscopicVars_000030.pkl', 'rb') as f:
-    #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
-    with open('./Results/half_gradPxy_emp_term_2/Data/MacroscopicVars_000130.pkl', 'rb') as f:
+    with open('/home/petronio/Nextcloud_sync/code/FLHET1D/alex_test_azim_motion/Results/testInertia_Initialization_NoConstantCurrent_NewSource_restart_interp/Data/MacroscopicVars_000030.pkl', 'rb') as f:
             [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
+    # with open('./Results/half_gradPxy_emp_term_2/Data/MacroscopicVars_000130.pkl', 'rb') as f:
+    #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
     # with open('./Results/half_gradPxy_emp_term_3/Data/MacroscopicVars_000036.pkl', 'rb') as f:
     #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
     # with open('./Results/half_gradPxy_emp_term_3/Data/MacroscopicVars_000036.pkl', 'rb') as f:
@@ -1005,8 +1036,8 @@ def main(fconfigfile):
     #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
     # with open('./Results/half_gradPxy_emp_term_30/Data/MacroscopicVars_000003.pkl', 'rb') as f:
     #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
-    with open('./Results/heat_flux_8/Data/MacroscopicVars_000100.pkl', 'rb') as f:
-            [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
+    # with open('./Results/heat_flux_8/Data/MacroscopicVars_000100.pkl', 'rb') as f:
+    #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
 
     alpha_B_init = compute_alphaB_array(x_center, 1.6238e-2 , 2.4560e-2, LTHR, msp.NBPOINTS_INIT)
 
