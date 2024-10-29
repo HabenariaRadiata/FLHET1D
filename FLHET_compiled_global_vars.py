@@ -11,6 +11,7 @@ from numba import njit
 import time as ttime
 import glob
 import scipy.interpolate as interpolate
+from scipy import integrate
 
 from modules.simu_params import SimuParameters
 
@@ -81,6 +82,28 @@ HEATFLUX             = msp.HEATFLUX
 IMPlICIT             = msp.IMPlICIT
 boolCircuit          = msp.Circuit
 V                    = msp.V0
+thomas_BM_testcase   = msp.thomas_BM_testcase
+empirical_term       = msp.empirical_term
+
+if os.path.exists(Resultsdir):
+    # delete current data in location:
+    print("!!!!! Warning !!!!!")
+    print("All Macroscopic*.pkl files in the " + Resultsdir + " location will be deleted to welcome new data.")
+    print("Do you want to continue? (y/n)")
+    answer = input()
+
+    bool_rewrite = False
+    while bool_rewrite == False:
+        if answer == "y":
+            list_of_res_files = glob.glob(Resultsdir+"/Data/Macroscopic*.pkl")
+            for filenametemp in list_of_res_files:
+                os.remove(filenametemp)
+            if len(list_of_res_files) > 0:
+                print("Warning: all Macroscopic*.pkl files in the "+Resultsdir+" location were deleted to welcome new data.")
+            bool_rewrite = True
+        if answer == "n":
+            print("The program will stop now.")
+            sys.exit()
 
 if not os.path.exists(Resultsdir):
     os.makedirs(Resultsdir)
@@ -93,13 +116,6 @@ if not os.path.exists(ResultsData):
 
 msp.save_config_file("Configuration.cfg")
 
-# delete current data in location:
-list_of_res_files = glob.glob(Resultsdir+"/Data/Macroscopic*.pkl")
-for filenametemp in list_of_res_files:
-    os.remove(filenametemp)
-if len(list_of_res_files) > 0:
-    print("Warning: all Macroscopic*.pkl files in the "+Resultsdir+" location were deleted to welcome new data.")
-
 Delta_t = 1.0  # Initialization of Delta_t (do not change)
 
 ##########################################################
@@ -111,13 +127,15 @@ NBPOINTS = np.shape(x_center)[0]
 
 
 def compute_B_array():
-
-    BMAX = msp.BMAX
+    """
+    Compute the magnetic field array Barr.
+    """
+    BMAX   = msp.BMAX
     B0     = msp.B0
-    BLX     = msp.BLX
+    BLX    = msp.BLX
     LTHR   = msp.LTHR
     LB1    = msp.LB1
-    LB2     = msp.LB2
+    LB2    = msp.LB2
 
     if msp.BTYPE == 'CharoyBenchmark':
 
@@ -157,28 +175,72 @@ def compute_alphaB_array():
 alpha_B = compute_alphaB_array()
 alpha_B_extended = np.concatenate([[alpha_B[0]], alpha_B, [alpha_B[-1]]])
 
-##### Save Unvariant data #####
+if empirical_term:
+    def linear_extrapolation_multi(vec, num_points=3):
+        # Use at least two points for linear extrapolation
+        if len(vec) < 2:
+            raise ValueError("Vector must have at least two elements for extrapolation.")
+
+        # Ensure num_points is not greater than the vector length
+        num_points = min(num_points, len(vec) - 1)
+
+        # Fit a line (degree 1 polynomial) to the first few points
+        start_fit = np.polyfit(range(num_points), vec[:num_points], 1)
+        # Predict the value before the first point using the line
+        start_extrapolated_value = np.polyval(start_fit, -1)  # x = -1 for extrapolation one step back
+
+        # Fit a line to the last few points
+        end_fit = np.polyfit(range(len(vec) - num_points, len(vec)), vec[-num_points:], 1)
+        # Predict the value after the last point using the line
+        end_extrapolated_value = np.polyval(end_fit, len(vec))  # x = len(vec) for extrapolation one step forward
+
+        # Add the extrapolated values to the vector
+        extended_vec = np.insert(vec, 0, start_extrapolated_value)  # Insert at the beginning
+        extended_vec = np.append(extended_vec, end_extrapolated_value)  # Append at the end
+
+        return extended_vec
+
+    try:
+        empirical_term = np.loadtxt('alex_test_azim_motion/empirical_term_add_5.txt')
+        # empirical_term = np.loadtxt('no_Rei.txt')
+        empirical_term_interp_y = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 1])
+        print("Empirical term y loaded.")
+        empirical_term_interp_x = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 2])
+        print("Empirical term x loaded.")
+        tau_xy_temp = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 3])
+        tau_xy = linear_extrapolation_multi(tau_xy_temp, 2) * 0
+        print("tau_xy loaded")
+        heat_flux_temp = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 4])
+        heat_flux = linear_extrapolation_multi(heat_flux_temp, 2) * 0
+        print("heatflux loaded")
+    except:
+        print("No empirical term file found.")
+
+##### Save invariant data #####
 pickle.dump(
     [Barr, x_mesh, x_center, alpha_B], open(ResultsData + "/MacroscopicUnvariants.pkl", "wb")
 )
 
 ##### Allocation of vectors #####
-P = np.ones((5, NBPOINTS))  # Primitive vars P = [ng, ni, ui,  Te, ve] TODO: maybe add , E
-U = np.ones((4, NBPOINTS))  # Conservative vars U = [rhog, rhoi, rhoUi, 3/2 ne*e*Te]
-S = np.ones((4, NBPOINTS))  # Source Term
+P = np.ones((6, NBPOINTS))  # Primitive vars P = [ng, ni, ui,  Te, ve] TODO: maybe add , E
+U = np.ones((5, NBPOINTS))  # Conservative vars U = [rhog, rhoi, rhoUi, 3/2 ne*e*Te]
+S = np.ones((5, NBPOINTS))  # Source Term
 Efield  = np.zeros(NBPOINTS)
-F_cell = np.ones((4, NBPOINTS + 2))  # Flux at the cell center. We include the Flux of the Ghost cells
-F_interf = np.ones((4, NBPOINTS + 1))  # Flux at the interface
-U_LeftGhost = np.ones((4, 1))  # Ghost cell on the left
-P_LeftGhost = np.ones((5, 1))  # Ghost cell on the left
-U_RightGhost = np.ones((4, 1))  # Ghost cell on the right
-P_RightGhost = np.ones((5, 1))  # Ghost cell on the right
+F_cell = np.ones((5, NBPOINTS + 2))  # Flux at the cell center. We include the Flux of the Ghost cells
+F_interf = np.ones((5, NBPOINTS + 1))  # Flux at the interface
+U_LeftGhost  = np.ones((5, 1))  # Ghost cell on the left
+P_LeftGhost  = np.ones((6, 1))  # Ghost cell on the left
+U_RightGhost = np.ones((5, 1))  # Ghost cell on the right
+P_RightGhost = np.ones((6, 1))  # Ghost cell on the right
 
 if msp.START_FROM_INPUT:
-
     list_of_pkls = glob.glob(msp.INPUT_DIR+"/MacroscopicVars*.pkl")
     assert(len(list_of_pkls) == 1)
     INPUT_FILE  = list_of_pkls[0]
+    print("len(list_of_pkls)", len(list_of_pkls), msp.INPUT_DIR)
+    # assert(len(list_of_pkls) == 1) # TODO: To remove??
+    # INPUT_FILE  = list_of_pkls[0]
+    INPUT_FILE  = list_of_pkls[-1]
     print("Simulation starts from the profiles stored in ", INPUT_FILE)
 
     with open(INPUT_FILE, 'rb') as f: # !!! Caution !!!: outdated, because currently data are not saved like this. May malfunction for input file recently added.
@@ -186,17 +248,18 @@ if msp.START_FROM_INPUT:
 
     NBPOINTS_initialField = P_INIT.shape[1]
     #Delta_x_initialField  = LX/NBPOINTS_initialField
-    x_mesh_initialField   = np.zeros(NBPOINTS_initialField+1, dtype=float) # Mesh in the interface
+    x_mesh_initialField         = np.zeros(NBPOINTS_initialField+1, dtype=float) # Mesh in the interface
     x_mesh_initialField[1:-1]   = 0.5*(x_center_INIT[:-1] + x_center_INIT[1:])
     x_mesh_initialField[-1]     = LX
     #x_center_initialField = np.linspace(Delta_x_initialField, LX - Delta_x_initialField, NBPOINTS_initialField)     # Mesh in the center of cell
 
-        # intégration de la fonction INITIAL field en cours.
+    # interpolation of the initial profiles on the current mesh
     P0_INTERP = interpolate.interp1d(x_center_INIT, P_INIT[0,:], fill_value=(P_INIT[0,0], P_INIT[0,-1]), bounds_error=False)
     P1_INTERP = interpolate.interp1d(x_center_INIT, P_INIT[1,:], fill_value=(P_INIT[1,0], P_INIT[1,-1]), bounds_error=False)
     P2_INTERP = interpolate.interp1d(x_center_INIT, P_INIT[2,:], fill_value=(P_INIT[2,0], P_INIT[2,-1]), bounds_error=False)
     P3_INTERP = interpolate.interp1d(x_center_INIT, P_INIT[3,:], fill_value=(P_INIT[3,0], P_INIT[3,-1]), bounds_error=False)
     P4_INTERP = interpolate.interp1d(x_center_INIT, P_INIT[4,:], fill_value=(P_INIT[4,0], P_INIT[4,-1]), bounds_error=False)
+    P5_INTERP = interpolate.interp1d(x_center_INIT, P_INIT[5,:], fill_value=(P_INIT[5,0], P_INIT[5,-1]), bounds_error=False)
 
     # We initialize the primitive variables
     P[0,:] = P0_INTERP(x_center)                           # Initial propellant density ng TODO
@@ -204,6 +267,7 @@ if msp.START_FROM_INPUT:
     P[2,:] = P2_INTERP(x_center)                           # Initial vi
     P[3,:] = P3_INTERP(x_center)                           # Initial Te
     P[4,:] = P4_INTERP(x_center)                           # Initial Ve
+    P[5,:] = P4_INTERP(x_center)                           # Initial Ve
 
     Jm1 = J_INIT
     J   = J_INIT
@@ -211,12 +275,11 @@ if msp.START_FROM_INPUT:
     del t_INIT, P_INIT, U_INIT, P_LeftGhost_INIT, P_RightGhost_INIT, J_INIT, V_INIT, B_INIT , x_center_INIT, P0_INTERP, P1_INTERP, P2_INTERP, P3_INTERP, P4_INTERP
 
 else:
-
     # We initialize the primitive variables
-    ng_anode = MDOT / (Mi* A0 * VG)  # Initial propellant density ng at the anode location
+    ng_anode = MDOT / (Mi * A0 * VG)  # Initial propellant density ng at the anode locatione = MDOT / (Mi* A0 * VG)  # Initial propellant density ng at the anode location
     #P[0,:] = InitNeutralDensity(x_center, ng_anode, VG, P, ionization_type, SIZMAX, LSIZ1, LSIZ2) # initialize n_g in the space so that it is cst in time if there is no wall recombination.
     ### Warning, in the code currently, neutrals dyanmic is canceled.
-    P[0,:] = ng_anode
+    P[0, :] = ng_anode
     P[1, :] = msp.NI0  # Initial ni
     P[2, :] = 0.0  # Initial vi
     P[3, :] = msp.TE0  # Initial Te
@@ -246,13 +309,17 @@ else:
     J = 0.0  # Initial Current
 
 if msp.TIMESCHEME == "TVDRK3":
+    """ Allocation of vectors for the TVDRK3 scheme """
     P_1 = np.ones(
         (5, NBPOINTS)
     )  # Primitive vars P = [ng, ni, ui,  Te, ve] TODO: maybe add , E
     U_1 = np.ones((4, NBPOINTS))  # Conservative vars U = [rhog, rhoi, rhoUi,
+        (6, NBPOINTS)
+    )  # Primitive vars P = [ng, ni, ui,  Te, ve, Ue_y] TODO: maybe add , E
+    U_1 = np.ones((5, NBPOINTS))  # Conservative vars U = [rhog, rhoi, rhoUi, 3/2 ne*e*Te, rhoe*U_{e_y}]
 
 if msp.Circuit:
-
+    """ Circuit parameters """
     R = msp.R
     L = msp.L
     C = msp.C
@@ -281,13 +348,16 @@ if msp.Circuit:
 i_save = 0
 time = 0.0
 iter = 0
+J = 0.0  # Initial Current
 
-##### Compute Si_{iz} #####
-xm = (msp.LSIZ1 + msp.LSIZ2)/2
-imposed_Siz = msp.SIZMAX*np.cos(math.pi*(x_center - xm)/(msp.LSIZ2 - msp.LSIZ1))
-imposed_Siz = np.where((x_center < msp.LSIZ1)|(x_center > msp.LSIZ2), 0., imposed_Siz)
-del xm
-
+if thomas_BM_testcase:
+    """ Thomas' benchmark ionization source term """
+    xm = (msp.LSIZ1 + msp.LSIZ2)/2
+    imposed_Siz = msp.SIZMAX*np.cos(math.pi*(x_center - xm)/(msp.LSIZ2 - msp.LSIZ1))
+    imposed_Siz = np.where((x_center < msp.LSIZ1)|(x_center > msp.LSIZ2), 0., imposed_Siz)
+    del xm
+else:
+    imposed_Siz = np.zeros(NBPOINTS)
 
 ###############################################
 #           FUNCTIONS DEFINING OUR MODEL
@@ -318,45 +388,46 @@ def compute_mu(fP):
     return mu_eff_arr
 
 
-@njit
+# @njit
 def PrimToCons(fP, fU):
     fU[0, :] = fP[0, :] * Mi # rhog
     fU[1, :] = fP[1, :] * Mi # rhoi
-    fU[2, :] = fP[2, :] * fP[1, :] * Mi # rhoiUi
-    fU[3, :] = 3.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :]  # 3/2*ni*e*Te
+    fU[2, :] = fP[2, :] * fP[1, :] * Mi # rhoi * Ui
+    fU[3, :] = 0.5 * phy_const.m_e * fP[1, :] * fP[5, :]**2 + 3.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :]  # (1/2*rhoe*Ue_y^2 +  3/2*ni*e*Te)
+    fU[4, :] = phy_const.m_e * fP[1, :] * fP[5, :]            # rhoe * Ue_y
 
-
-@njit
+# @njit
 def ConsToPrim(fU, fP, fJ=0.0):
     fP[0, :] = fU[0, :] / Mi # ng
     fP[1, :] = fU[1, :] / Mi # ni
     fP[2, :] = fU[2, :] / fU[1, :]  # Ui = rhoUi/rhoi
-    fP[3, :] = 2.0 / 3.0 * fU[3, :] / (phy_const.e * fP[1, :])  # Te
+    fP[3, :] = 2.0 / 3.0 * ( fU[3, :] - 0.5 * fU[4, :]**2 / ( phy_const.m_e * fU[1, :] / Mi) ) / (phy_const.e * fP[1, :])  # Te
     fP[4, :] = fP[2, :] - fJ / (A0 * phy_const.e * fP[1, :])  # ve
+    fP[5, :] = fU[4, :] / (phy_const.m_e * fU[1, :] / Mi )     # Ue_y
 
-
-@njit
-def InviscidFlux(fP, fF):
+# @njit
+def InviscidFlux(fP, fF, tau_xy = 0., heat_flux_vec = 0.):
     fF[0, :] = fP[0, :] * VG * Mi # rho_g*v_g
     fF[1, :] = fP[1, :] * fP[2, :] * Mi # rho_i*v_i
     fF[2, :] = (
         Mi* fP[1, :] * fP[2, :] * fP[2, :] + fP[1, :] * phy_const.e * fP[3, :]
     )  # M*n_i*v_i**2 + p_e
-    fF[3, :] = 5.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :] * fP[4, :]  # 5/2n_i*e*T_e*v_e
+    fF[3, :] = (5.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :] + 0.5 * phy_const.m_e * fP[1, :] * fP[5, :]**2) * fP[4, :] + tau_xy * fP[5, :] + heat_flux_vec# (1/2*rhoe*uey^2*v_e + 5/2n_i*e*T_e*v_e)
+    fF[4, :] = phy_const.m_e * fP[1, :] * fP[5, :] * fP[4, :]            # (rhoe * uey * uex)
 
 
-@njit
+# @njit
 def CumTrapz(y, d):
     n = y.shape[0]
     cuminteg = np.zeros(y.shape, dtype=float)
-    
+
     for i in range(1, n):
         cuminteg[i] = cuminteg[i-1] + d * (y[i] + y[i-1]) / 2.0
 
     return cuminteg
 
 
-@njit
+# @njit
 def gradient(y, x):
     dp_dz = np.zeros(y.shape)
     dp_dz[1:-1] = (y[2:] - y[:-2]) / (x[2:] - x[:-2])
@@ -366,7 +437,7 @@ def gradient(y, x):
     return dp_dz
 
 
-@njit
+# @njit
 def compute_E(fP):
 
     # TODO: This is already computed! Maybe move to the source
@@ -425,7 +496,7 @@ def compute_E(fP):
     return E
 
 
-@njit
+# @njit
 def Source(fP, fS):
 
     #############################################################
@@ -436,15 +507,14 @@ def Source(fP, fS):
     vi = fP[2, :]
     Te = fP[3, :]
     ve = fP[4, :]
+    Ue_y = fP[5, :]
 
-    # Gamma_E = 3./2.*ni*phy_const.e*Te*ve    # Flux of internal energy
-    me = phy_const.m_e
+    me = phy_const.m_e # electron mass TODO: make this a global variable
     wce = phy_const.e * Barr / me # electron cyclotron frequency
 
     #############################
-    #       Compute the rates   #
+    #     Compute the rates     #
     #############################
-
     Siz_arr = np.zeros(ng.shape, dtype=float) # the final unit of Siz_arr is m^(-3).s^(-1)
     # Computing ionization source term:
     if not boolSizImposed:
@@ -466,8 +536,7 @@ def Source(fP, fS):
         nu_iw = (4./3.)*(1./(R2 - R1))*np.sqrt(phy_const.e*Te/Mi)
         # Limit the wall interactions to the inner channel
         nu_iw[x_center > LTHR] = 0.0
-        nu_ew = nu_iw / (1.0 - sigma)  # Electron - wall collision rate        
-    
+        nu_ew = nu_iw / (1.0 - sigma)  # Electron - wall collision rate
     elif wall_inter_type == "None":
         nu_iw = np.zeros(Te.shape, dtype=float)     # Ion - wall collision rate
         nu_ew = np.zeros(Te.shape, dtype=float)     # Electron - wall collision rate
@@ -492,36 +561,56 @@ def Source(fP, fS):
     nu_m = (
         ng * KEL + alpha_B * wce + nu_ew
         )  # Electron momentum - transfer collision frequency
-    
+
+    # if the empirical term is used, we compute it here
+    if np.any(empirical_term_interp_y) != 0.0:
+        RieY = np.copy(empirical_term_interp_y)
+        RieX = np.copy(empirical_term_interp_x)
+        # RieY -= Rei_sat(ni, Te, vi, fDelta_x[0], fMi)
+    else:
+        RieY = -phy_const.m_e * nu_m * ni * Ue_y
+        RieX = -phy_const.m_e * ni * nu_m * ve
+
     mu_eff = (phy_const.e / (me* nu_m)) * (
         1.0 / (1 + (wce / nu_m) ** 2)
         )  # Effective mobility
 
     #div_u   = gradient(ve, d=Delta_x)               # To be used with 3./2. in line 160 and + phy_const.e*ni*Te*div_u  in line 231
     
-    if boolPressureDiv:
+    if boolPressureDiv: # TODO: check that is is verified by default
         div_p = gradient(phy_const.e*ni*Te, x_center) # To be used with 5./2 and + div_p*ve in line 231    
     else:
         div_p = np.zeros(Te.shape) #this line to match the old version of the code.
 
+    E_x = - Ue_y * Barr - div_p / (phy_const.e * ni)
+
+
     fS[0, :] = (-d_IC * Siz_arr + nu_iw * ni) * Mi # Gas Density
     fS[1, :] = (Siz_arr - nu_iw * ni) * Mi # Ion Density
     fS[2, :] = (
-        d_IC * Siz_arr * VG
-        - (phy_const.e / (mu_eff[:] * Mi)) * ni * ve
-        - nu_iw * ni * vi
-        ) * Mi # Momentum
+        d_IC * Siz_arr * VG * Mi
+        + RieX
+        - phy_const.e * ni * Barr * Ue_y
+        - nu_iw * ni * vi * Mi
+        )  # Momentum
+    # fS[3,:] = (
+    #     - d_IC * Siz_arr * Eion * gamma_i * phy_const.e  +  (1.0 - d_IC)*Siz_arr* 1.5 * Te_inj* phy_const.e
+    #     - nu_ew * ni * Ew * phy_const.e
+    #     + (1./mu_eff) * ni * ve**2 * phy_const.e
+    #     + div_p*ve
+    # ) TODO: check if this implementation is correct
     fS[3,:] = (
-        - d_IC * Siz_arr * Eion * gamma_i * phy_const.e  +  (1.0 - d_IC)*Siz_arr* 1.5 * Te_inj* phy_const.e
+        - d_IC * Siz_arr * Eion * gamma_i * phy_const.e
         - nu_ew * ni * Ew * phy_const.e
-        + (1./mu_eff) * ni * ve**2 * phy_const.e
-        + div_p*ve
-    )
+        - phy_const.e * ni * E_x * ve
+        + 1.5 * Siz_arr * phy_const.e * 10. #
+        - 0.5 * Siz_arr * phy_const.m_e * Ue_y**2 # new term
+        )
+    fS[4, :] = (
+        RieY + phy_const.e * ni * Barr * ve
+        )  # Momentum electrons
 
-    #+ phy_const.e*ni*Te*div_u  #- gradI_term*ni*Te*grdI          # Energy in Joule
-
-
-@njit
+# @njit
 def heatFlux(fP, fS):
 
     #############################################################
@@ -596,27 +685,27 @@ def heatFlux(fP, fS):
     #+ phy_const.e*ni*Te*div_u  #- gradI_term*ni*Te*grdI          # Energy in Joule
 
 
-@njit
-def TDMA(a,b,c,d):      # Thomas algorithm for the implicit solver a = Lower Diag, b = Main Diag, c = Upper Diag, d = solution vector
+# @njit
+def TDMA(a, b, c, d):  # Thomas algorithm for the implicit solver a = Lower Diag, b = Main Diag, c = Upper Diag, d = solution vector
     n = len(d)
-    w= np.zeros(n-1,float)
-    g= np.zeros(n, float)
-    p = np.zeros(n,float)
-    
-    w[0] = c[0]/b[0]
-    g[0] = d[0]/b[0]
+    w = np.zeros(n - 1, float)
+    g = np.zeros(n, float)
+    p = np.zeros(n, float)
 
-    for i in range(1,n-1):
-        w[i] = c[i]/(b[i] - a[i-1]*w[i-1])
-    for i in range(1,n):
-        g[i] = (d[i] - a[i-1]*g[i-1])/(b[i] - a[i-1]*w[i-1])
-    p[n-1] = g[n-1]
-    for i in range(n-1,0,-1):
-        p[i-1] = g[i-1] - w[i-1]*p[i]
+    w[0] = c[0] / b[0]
+    g[0] = d[0] / b[0]
+
+    for i in range(1, n - 1):
+        w[i] = c[i] / (b[i] - a[i - 1] * w[i - 1])
+    for i in range(1, n):
+        g[i] = (d[i] - a[i - 1] * g[i - 1]) / (b[i] - a[i - 1] * w[i - 1])
+    p[n - 1] = g[n - 1]
+    for i in range(n - 1, 0, -1):
+        p[i - 1] = g[i - 1] - w[i - 1] * p[i]
     return p
 
 
-@njit
+# @njit
 def heatFluxImplicit(fP, fDelta_t):
 
 
@@ -699,10 +788,37 @@ def heatFluxImplicit(fP, fDelta_t):
 
     return TDMA(a_lowerDiag[1:], b_mainDiag, c_upperDiag[:-1], d_solutionVector)
 
+# @njit
+def simpson(y, x):
+    """
+    Simpson's rule for integration
+    y is the vector of values, x is the vector of corresponding x values
+    """
+    dx = x[1] - x[0]
+    return dx/3 * np.sum(y[0:-1:2] + 4*y[1::2] + y[2::2])
+
+# @njit
+def calculate_Rei(ne, Te, uey):
+    """ Calculate the electron-ion collision friction using a Maxwellian distribution """
+    lambda_D = ((phy_const.epsilon_0 * Te * phy_const.elementary_charge)/(ne * phy_const.elementary_charge**2))**.5
+    omega_pe = (ne * phy_const.elementary_charge)/(phy_const.electron_mass * phy_const.epsilon_0)**.5
+    Ewave = 1.5 * ne * Te * phy_const.elementary_charge / 432
+    vTe = (2 * Te * phy_const.elementary_charge / phy_const.electron_mass)**.5
+    Rei_Maxwellian = 4 * (2*np.pi)**.5 * omega_pe * lambda_D * Ewave * uey / vTe**3 * np.exp(-(uey / vTe)**2)
+    return Rei_Maxwellian
+
+# @njit
+def Rei_sat(ne, Te, vix, dx, mass):
+    """
+    Calculate the saturated electron-ion collision friction
+    """
+    grad_term = np.gradient(vix * ne * Te, dx)
+    cs = phy_const.elementary_charge * Te / mass
+    return phy_const.elementary_charge/(16*6**.5 * cs) * np.abs(grad_term)
 
 # Compute the Current
-@njit
-def compute_I(fP, fV):
+# @njit
+def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0, empirical_term_interp_y = 0.0, empirical_term_interp_x = 0.0):
 
     # TODO: This is already computed! Maybe move to the source
     #############################################################
@@ -713,8 +829,9 @@ def compute_I(fP, fV):
     vi = fP[2, :]
     Te = fP[3, :]
     ve = fP[4, :]
+    Ue_y = fP[5, :]
 
-    me = phy_const.m_e
+    me = phy_const.m_e # electron mass TODO: make this a global variable
     wce = phy_const.e * Barr / me # electron cyclotron frequency
 
     #############################
@@ -724,7 +841,7 @@ def compute_I(fP, fV):
     sigma = 2.0 * Te / ESTAR  # SEE yield
     sigma[sigma > 0.986] = 0.986
     if wall_inter_type == "Default":
-        # nu_iw value before Martin changed the code for Charoy's test cases.    
+        # nu_iw value before Martin changed the code for Charoy's test cases.
         nu_iw = (4./3.)*(1./(R2 - R1))*np.sqrt(phy_const.e*Te/Mi)
         # Limit the collisions to inside the thruster
         index_LTHR = np.argmax(x_center > LTHR)
@@ -735,13 +852,55 @@ def compute_I(fP, fV):
         nu_ew = np.zeros(Te.shape, dtype=float)     # Electron - wall collision rate
 
     # Electron momentum - transfer collision frequency
-    nu_m = ng * KEL + alpha_B * wce + nu_ew
+    # nu_m = ng * KEL + alpha_B * wce + nu_ew
+    #
+    # mu_eff = (phy_const.e / (me* nu_m)) * (
+    #     1.0 / (1 + (wce / nu_m) ** 2)
+    # )  # Effective mobility
+    #
+    # dp_dz = gradient(ni*Te, x_center)
+    #
+    # value_trapz_1 = (
+    #     np.sum(
+    #         ( (vi / mu_eff + dp_dz / ni)[1:] + (vi / mu_eff + dp_dz / ni)[:-1] ) * (x_center[1:] - x_center[:-1]) / 2.0
+    #         )
+    # )
+    # top = fV + value_trapz_1
+    #
+    # value_trapz_2 = (
+    #     np.sum(
+    #         ((1.0 / (mu_eff * ni))[1:] + (1.0 / (mu_eff * ni))[:-1]) * (x_center[1:] - x_center[:-1]) / 2.0
+    #         )
+    # )
+    # value_trapz_2 = np.trapz((1.0 / (mu_eff * ni)) , x_center)
+    # bottom = phy_const.e * A0 * Rext + value_trapz_2
+    #
+    # J0 = top / bottom  # Discharge current density
+    if old_curr:
+        # Electron momentum - transfer collision frequency
+        nu_m = ng * KEL + alpha_B * wce + nu_ew
 
-    mu_eff = (phy_const.e / (me* nu_m)) * (
-        1.0 / (1 + (wce / nu_m) ** 2)
-    )  # Effective mobility
+        div_p = gradient(ni * Te, x_center)
 
-    dp_dz = gradient(ni*Te, x_center)
+        Term_1 = + Ue_y * Barr + phy_const.m_e / phy_const.e * nu_m * vi + div_p / (ni)
+        value_simpson_1 = simpson(Term_1, x_center)
+
+        top = fV + value_simpson_1
+
+        Term_2 = phy_const.m_e / phy_const.e * nu_m / ni
+        value_simpson_2 = simpson(Term_2, x_center)
+        bottom = phy_const.e * A0 * Rext + value_simpson_2
+        J0 = top / bottom  # Discharge current density
+    else:
+        nu_m = ng * KEL + alpha_B * wce + nu_ew
+
+        div_p = gradient(ni*Te, x_center)
+        div_mnuxuy = gradient(me*ni*ve*Ue_y, x_center)
+        div_uey = gradient(Ue_y, x_center)
+
+        if np.sum(n_old_U_ey_old) == 0.0:
+            n_old_U_ey_old = np.copy(ni * Ue_y)
+        dt_m_n_uey = phy_const.m_e * (ni * Ue_y - n_old_U_ey_old) / Delta_t
 
     value_trapz_1 = (
         np.sum(
@@ -749,24 +908,40 @@ def compute_I(fP, fV):
             ) 
     )
     top = fV + value_trapz_1
+        if np.any(empirical_term_interp_y) != 0:
+            # use the interpolated empirical term
+            RieY = np.copy(empirical_term_interp_y)
+            RieX = np.copy(empirical_term_interp_x)
+            # RieY -= Rei_sat(ni, Te, vi, fDelta_x[0], fMi)
+        else:
+            RieX = -phy_const.m_e * nu_m * ni * ve
+            RieY = -phy_const.m_e * nu_m * ni * Ue_y
 
-    value_trapz_2 = (
-        np.sum(
-            ((1.0 / (mu_eff * ni))[1:] + (1.0 / (mu_eff * ni))[:-1]) * (x_center[1:] - x_center[:-1]) / 2.0
-            ) 
-    )
-    value_trapz_2 = np.trapz((1.0 / (mu_eff * ni)) , x_center)
-    bottom = phy_const.e * A0 * Rext + value_trapz_2
+        Term_1 = Ue_y * Barr + div_p / ni - RieX / (phy_const.e * ni) + vi * Barr
+        Term_1 += RieY / (phy_const.e * ni) - div_mnuxuy / (phy_const.e * ni) - dt_m_n_uey / (phy_const.e * ni)
 
-    J0 = top / bottom  # Discharge current density
+        # value_simpson_1 = integrate.simpson(Term_1 , x=fx_center)
+        Term_1 = np.append(Term_1, Term_1[-1] + Term_1[-1] - Term_1[-2])
+        value_simpson_1 = simpson(Term_1, np.append(x_center, x_center[-1] + x_center[1] - x_center[0]))
+        top = fV + value_simpson_1
+
+        Term_2 = Barr / ni - phy_const.electron_mass * div_uey / (phy_const.e * ni)
+        # value_simpson_2 = integrate.simpson(Term_2 , x=x_center) # TODO: check if this is correct with the other simpson
+        Term_2 = np.append(Term_2, Term_2[-1] + Term_2[-1] - Term_2[-2])
+        value_simpson_2 = simpson(Term_2, np.append(x_center, x_center[-1] + x_center[1] - x_center[0]))
+        bottom = phy_const.e * A0 * Rext + value_simpson_2
+
+        J0 = top / bottom  # Discharge current density
+
     return J0 * phy_const.e * A0
 
 
-@njit
+# @njit
 def SetInlet(fP_LeftColumn, fU_ghost, fP_ghost, fJ=0.0, moment=1):
     #TODO: change the Dirichlet BCs so that a fixed value s is achieved in the frontier x=0. So the ghost value must be s_g = 2*s - s[0], where s[0] is the left value of the bulk array. Currently only v_i is computed this way to achieve the Bohm velocity at the frontier. It is not the case for n_g and T_e.
     fP_LC   = fP_LeftColumn     # renaming for more elegance 
 
+    print(phy_const.e, fP_LC[3], Mi)
     U_Bohm = np.sqrt(phy_const.e * fP_LC[3] / Mi)
 
     if not boolSizImposed:
@@ -780,25 +955,20 @@ def SetInlet(fP_LeftColumn, fU_ghost, fP_ghost, fJ=0.0, moment=1):
     
     fU_ghost[1] = fP_LC[1] * Mi
     fU_ghost[2] = -2.0 * fP_LC[1] * U_Bohm* Mi - fP_LC[1] * fP_LC[2] * Mi     # so that 0.5*(U_ghost[2] + U_LC[2]) = - u_B * U_LC[1] 
-    # fU_ghost[3] = 3.0 / 2.0 * fP_LC[1] * phy_const.e * fP_LC[3]
-    #fU_ghost[3] = 3.0 * fP_LC[1] * phy_const.e * fTE0 - 3./2. * fP_LC[1] * phy_const.e * fP_LC[3]     # so that the average of the ghost and the cell index 0 is 3/2*rho_i[0]*e*TE0
-    fU_ghost[3] = 3.0 / 2.0 * fP_LC[1] * phy_const.e * fP_LC[3] # it is this way to try and reproduce mazallon PPS1350
-    # kappa_wall = phy_const.e**2 * fP_LC[1] * fP_LC[3] * 2.38408574e+23 # Test with only anomalous transport
-    # Delta_x = 0.000125
-    # T_Ghost = fP_LC[1]*U_Bohm*(2*phy_const.e*fP_LC[3])*Delta_x/kappa_wall
-    # fU_ghost[3] = 3. / 2. * fP_LC[1] * phy_const.e * T_Ghost
-    # if fU_ghost[3] < 0.1:
-    #     print("WARNING: Ghost cell too cold")
-    #     print( fU_ghost[3])
+    U_ey_In = fP_LC[5]
+    Energy_Ghost =  0.5 * phy_const.m_e * fP_LC[1] * fP_LC[5]**2 + 3.0 / 2.0 * fP_LC[1] * phy_const.e * Te_Cath #(2*fTe_cath - fP_In[3])
+    fU_ghost[3] = Energy_Ghost
+    fU_ghost[4] = phy_const.m_e * fP_LC[1] * fP_LC[5]
 
     fP_ghost[0] = fU_ghost[0] / Mi # ng
     fP_ghost[1] = fU_ghost[1] / Mi # ni
     fP_ghost[2] = fU_ghost[2] / fU_ghost[1]  # Ui
-    fP_ghost[3] = 2.0 / 3.0 * fU_ghost[3] / (phy_const.e * fP_ghost[1])  # Te
-    fP_ghost[4] = fP_ghost[2] - fJ / (A0 * phy_const.e * fP_ghost[1])  # ve
+    fP_ghost[3] =  2.0 / 3.0 * ( fU_ghost[3] - 0.5 * fU_ghost[4]**2 / ( phy_const.m_e * fU_ghost[1] / Mi) ) / (phy_const.e * fP_ghost[1]) # Te
+    fP_ghost[4] = fP_ghost[2] - fJ / (A0 * phy_const.e * fP_ghost[1])   # ve
+    fP_ghost[5] = fU_ghost[4] / (phy_const.m_e * fU_ghost[1] / Mi )     # Ue_y
 
 
-@njit
+# @njit
 def SetOutlet(fP_RightColumn, fU_ghost, fP_ghost, J=0.0):
     #TODO: change the Dirichlet BCs so that a fixed value s is achieved in the frontier x=0. So the ghost value must be s_g = 2*s - s[0], where s[0] is the left value of the bulk array. It is not the case for T_e.
     fP_RC   = fP_RightColumn    # renaming for more elegance
@@ -807,21 +977,20 @@ def SetOutlet(fP_RightColumn, fU_ghost, fP_ghost, J=0.0):
     fU_ghost[1] = fP_RC[1] * Mi
     fU_ghost[2] = fP_RC[1] * fP_RC[2] * Mi
     fU_ghost[3] = 3.0 / 2.0 * fP_RC[1] * phy_const.e * Te_Cath
-    # fU_ghost[3] = 3.0 * fP_RC[1] * phy_const.e * Te_Cath - 3./2. * fP_RC[1] * phy_const.e * fP_RC[3] # so that the average temperature between the last cell and the ghost cell is Te_cath
+    fU_ghost[4] = phy_const.m_e * fP_RC[1] * 0. # TODO: check if this is correct
 
     fP_ghost[0] = fU_ghost[0] / Mi # ng
     fP_ghost[1] = fU_ghost[1] / Mi # ni
     fP_ghost[2] = fU_ghost[2] / fU_ghost[1]  # Ui
-    fP_ghost[3] = 2.0 / 3.0 * fU_ghost[3] / (phy_const.e * fP_ghost[1])  # Te
+    fP_ghost[3] =  2.0 / 3.0 * ( fU_ghost[3] - 0.5 * fU_ghost[4]**2 / ( phy_const.m_e * fU_ghost[1] / Mi) ) / (phy_const.e * fP_ghost[1]) # Te
     fP_ghost[4] = fP_ghost[2] - J / (A0 * phy_const.e * fP_ghost[1])  # ve
-
+    fP_ghost[5] = fU_ghost[4] / (phy_const.m_e * fU_ghost[1] / Mi )     # Ue_y
 
 ##########################################################
 #           Functions defining our numerics              #
 ##########################################################
-
 # TODO: These are vector. Better allocate them
-@njit
+# @njit
 def computeMaxEigenVal_e(fP):
 
     U_Bohm = np.sqrt(phy_const.e * fP[3, :] / Mi)
@@ -829,7 +998,7 @@ def computeMaxEigenVal_e(fP):
     return np.maximum(np.abs(U_Bohm - fP[4, :]) * 2, np.abs(U_Bohm + fP[4, :]) * 2)
 
 
-@njit
+# @njit
 def computeMaxEigenVal_i(fP):
 
     U_Bohm = np.sqrt(phy_const.e * fP[3, :] / Mi)
@@ -838,7 +1007,7 @@ def computeMaxEigenVal_i(fP):
     return np.maximum(np.abs(U_Bohm - fP[2, :]), np.abs(U_Bohm + fP[2, :]))
 
 
-@njit
+# @njit
 def NumericalFlux(fP, fU, fF_cell, fF_interf):
 
     # Compute the max eigenvalue
@@ -868,7 +1037,7 @@ def NumericalFlux(fP, fU, fF_cell, fF_interf):
     ) - 0.5 * lambda_max_e_12 * (fU[3, 1 : NBPOINTS + 2] - fU[3, 0 : NBPOINTS + 1])
 
 
-#@njit
+## @njit
 def ComputeDelta_t(fP):
 
     x_ext  = x_center_extended # renaming for elegance
@@ -902,7 +1071,9 @@ if TIMESCHEME == "Forward Euler":
     #           Loop with Forward Euler                                                      #
     #           U^{n+1}_j = U^{n}_j - Dt/Dx(F^n_{j+1/2} - F^n_{j-1/2}) + Dt S^n_j            #
     ##########################################################################################
-    J = compute_I(P, V)
+    n_old_U_ey_old = np.copy(P[1,:] * P[5,:])
+    J = compute_I(P, V, False, n_old_U_ey_old, empirical_term_interp_y, empirical_term_interp_x)
+
     while time < TIMEFINAL:
 
         # Save results
@@ -961,14 +1132,17 @@ if TIMESCHEME == "Forward Euler":
             * (F_interf[:, 1 : NBPOINTS + 1] - F_interf[:, 0:NBPOINTS])
             + Delta_t * S[:, :]
         )
+
         # Prevent the energy to be strictly negative
         U[3,:] = np.where(U[3,:] >= 0., U[3,:], 0.)
 
         # Compute the current
-        J = compute_I(P, V)
+        J = compute_I(P, V, False, n_old_U_ey_old, empirical_term_interp_y, empirical_term_interp_x)
 
         # Compute the primitive vars for next step
         ConsToPrim(U, P, J)
+
+        n_old_U_ey_old = np.copy(P[1, :] * P[5, :])
 
         time += Delta_t
         iter += 1
