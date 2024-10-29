@@ -235,8 +235,6 @@ P_RightGhost = np.ones((6, 1))  # Ghost cell on the right
 
 if msp.START_FROM_INPUT:
     list_of_pkls = glob.glob(msp.INPUT_DIR+"/MacroscopicVars*.pkl")
-    assert(len(list_of_pkls) == 1)
-    INPUT_FILE  = list_of_pkls[0]
     print("len(list_of_pkls)", len(list_of_pkls), msp.INPUT_DIR)
     # assert(len(list_of_pkls) == 1) # TODO: To remove??
     # INPUT_FILE  = list_of_pkls[0]
@@ -311,9 +309,6 @@ else:
 if msp.TIMESCHEME == "TVDRK3":
     """ Allocation of vectors for the TVDRK3 scheme """
     P_1 = np.ones(
-        (5, NBPOINTS)
-    )  # Primitive vars P = [ng, ni, ui,  Te, ve] TODO: maybe add , E
-    U_1 = np.ones((4, NBPOINTS))  # Conservative vars U = [rhog, rhoi, rhoUi,
         (6, NBPOINTS)
     )  # Primitive vars P = [ng, ni, ui,  Te, ve, Ue_y] TODO: maybe add , E
     U_1 = np.ones((5, NBPOINTS))  # Conservative vars U = [rhog, rhoi, rhoUi, 3/2 ne*e*Te, rhoe*U_{e_y}]
@@ -902,12 +897,6 @@ def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0, empirical_term_inte
             n_old_U_ey_old = np.copy(ni * Ue_y)
         dt_m_n_uey = phy_const.m_e * (ni * Ue_y - n_old_U_ey_old) / Delta_t
 
-    value_trapz_1 = (
-        np.sum(
-            ( (vi / mu_eff + dp_dz / ni)[1:] + (vi / mu_eff + dp_dz / ni)[:-1] ) * (x_center[1:] - x_center[:-1]) / 2.0
-            ) 
-    )
-    top = fV + value_trapz_1
         if np.any(empirical_term_interp_y) != 0:
             # use the interpolated empirical term
             RieY = np.copy(empirical_term_interp_y)
