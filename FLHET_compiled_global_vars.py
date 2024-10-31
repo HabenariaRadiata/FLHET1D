@@ -84,6 +84,7 @@ boolCircuit          = msp.Circuit
 V                    = msp.V0
 thomas_BM_testcase   = msp.thomas_BM_testcase
 empirical_term       = msp.empirical_term
+T_min = 1.
 
 if os.path.exists(Resultsdir):
     # delete current data in location:
@@ -201,14 +202,14 @@ if empirical_term:
         return extended_vec
 
     try:
-        empirical_term = np.loadtxt('alex_test_azim_motion/empirical_term_add_5.txt')
+        empirical_term = np.loadtxt('alex_test_azim_motion/empirical_term_add_3.txt')
         # empirical_term = np.loadtxt('no_Rei.txt')
         empirical_term_interp_y = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 1])
         print("Empirical term y loaded.")
         empirical_term_interp_x = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 2])
         print("Empirical term x loaded.")
         tau_xy_temp = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 3])
-        tau_xy = linear_extrapolation_multi(tau_xy_temp, 2) * 0
+        tau_xy = linear_extrapolation_multi(tau_xy_temp, 2)
         print("tau_xy loaded")
         heat_flux_temp = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 4])
         heat_flux = linear_extrapolation_multi(heat_flux_temp, 2) * 0
@@ -228,8 +229,8 @@ S = np.ones((5, NBPOINTS))  # Source Term
 Efield  = np.zeros(NBPOINTS)
 F_cell = np.ones((5, NBPOINTS + 2))  # Flux at the cell center. We include the Flux of the Ghost cells
 F_interf = np.ones((5, NBPOINTS + 1))  # Flux at the interface
-U_LeftGhost  = np.ones((5, 1))  # Ghost cell on the left
-P_LeftGhost  = np.ones((6, 1))  # Ghost cell on the left
+U_LeftGhost = np.ones((5, 1))  # Ghost cell on the left
+P_LeftGhost = np.ones((6, 1))  # Ghost cell on the left
 U_RightGhost = np.ones((5, 1))  # Ghost cell on the right
 P_RightGhost = np.ones((6, 1))  # Ghost cell on the right
 
@@ -265,7 +266,7 @@ if msp.START_FROM_INPUT:
     P[2,:] = P2_INTERP(x_center)                           # Initial vi
     P[3,:] = P3_INTERP(x_center)                           # Initial Te
     P[4,:] = P4_INTERP(x_center)                           # Initial Ve
-    P[5,:] = P4_INTERP(x_center)                           # Initial Ve
+    P[5,:] = P5_INTERP(x_center)                           # Initial Ve
 
     Jm1 = J_INIT
     J   = J_INIT
@@ -399,6 +400,7 @@ def ConsToPrim(fU, fP, fJ=0.0):
     fP[3, :] = 2.0 / 3.0 * ( fU[3, :] - 0.5 * fU[4, :]**2 / ( phy_const.m_e * fU[1, :] / Mi) ) / (phy_const.e * fP[1, :])  # Te
     fP[4, :] = fP[2, :] - fJ / (A0 * phy_const.e * fP[1, :])  # ve
     fP[5, :] = fU[4, :] / (phy_const.m_e * fU[1, :] / Mi )     # Ue_y
+
 
 # @njit
 def InviscidFlux(fP, fF, tau_xy = 0., heat_flux_vec = 0.):
@@ -601,9 +603,20 @@ def Source(fP, fS):
         + 1.5 * Siz_arr * phy_const.e * 10. #
         - 0.5 * Siz_arr * phy_const.m_e * Ue_y**2 # new term
         )
+
     fS[4, :] = (
         RieY + phy_const.e * ni * Barr * ve
-        )  # Momentum electrons
+    )  # Momentum electrons
+    # print("~~~~~~~~~~~ IN SOURCE ~~~~~~~~~~~")
+    # print("RieY", sum(RieY))
+    # print("empirical_term_interp_y", sum(empirical_term_interp_y))
+    # print("ve", sum(ve))
+    # print("Barr", sum(Barr))
+    # print("ni", sum(ni))
+    # print("Ue_y", sum(Ue_y))
+    # print("fS[4, :]", sum(fS[4, :]))
+    # print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+
 
 # @njit
 def heatFlux(fP, fS):
@@ -813,7 +826,7 @@ def Rei_sat(ne, Te, vix, dx, mass):
 
 # Compute the Current
 # @njit
-def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0, empirical_term_interp_y = 0.0, empirical_term_interp_x = 0.0):
+def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0):
 
     # TODO: This is already computed! Maybe move to the source
     #############################################################
@@ -881,7 +894,6 @@ def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0, empirical_term_inte
         value_simpson_1 = simpson(Term_1, x_center)
 
         top = fV + value_simpson_1
-
         Term_2 = phy_const.m_e / phy_const.e * nu_m / ni
         value_simpson_2 = simpson(Term_2, x_center)
         bottom = phy_const.e * A0 * Rext + value_simpson_2
@@ -908,7 +920,6 @@ def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0, empirical_term_inte
 
         Term_1 = Ue_y * Barr + div_p / ni - RieX / (phy_const.e * ni) + vi * Barr
         Term_1 += RieY / (phy_const.e * ni) - div_mnuxuy / (phy_const.e * ni) - dt_m_n_uey / (phy_const.e * ni)
-
         # value_simpson_1 = integrate.simpson(Term_1 , x=fx_center)
         Term_1 = np.append(Term_1, Term_1[-1] + Term_1[-1] - Term_1[-2])
         value_simpson_1 = simpson(Term_1, np.append(x_center, x_center[-1] + x_center[1] - x_center[0]))
@@ -917,9 +928,9 @@ def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0, empirical_term_inte
         Term_2 = Barr / ni - phy_const.electron_mass * div_uey / (phy_const.e * ni)
         # value_simpson_2 = integrate.simpson(Term_2 , x=x_center) # TODO: check if this is correct with the other simpson
         Term_2 = np.append(Term_2, Term_2[-1] + Term_2[-1] - Term_2[-2])
+
         value_simpson_2 = simpson(Term_2, np.append(x_center, x_center[-1] + x_center[1] - x_center[0]))
         bottom = phy_const.e * A0 * Rext + value_simpson_2
-
         J0 = top / bottom  # Discharge current density
 
     return J0 * phy_const.e * A0
@@ -930,7 +941,6 @@ def SetInlet(fP_LeftColumn, fU_ghost, fP_ghost, fJ=0.0, moment=1):
     #TODO: change the Dirichlet BCs so that a fixed value s is achieved in the frontier x=0. So the ghost value must be s_g = 2*s - s[0], where s[0] is the left value of the bulk array. Currently only v_i is computed this way to achieve the Bohm velocity at the frontier. It is not the case for n_g and T_e.
     fP_LC   = fP_LeftColumn     # renaming for more elegance 
 
-    print(phy_const.e, fP_LC[3], Mi)
     U_Bohm = np.sqrt(phy_const.e * fP_LC[3] / Mi)
 
     if not boolSizImposed:
@@ -1025,6 +1035,9 @@ def NumericalFlux(fP, fU, fF_cell, fF_interf):
         fF_cell[3, 0 : NBPOINTS + 1] + fF_cell[3, 1 : NBPOINTS + 2]
     ) - 0.5 * lambda_max_e_12 * (fU[3, 1 : NBPOINTS + 2] - fU[3, 0 : NBPOINTS + 1])
 
+    fF_interf[4, :] = 0.5 * (
+        fF_cell[4, 0 : NBPOINTS + 1] + fF_cell[4, 1 : NBPOINTS + 2]
+    ) - 0.5 * lambda_max_e_12 * (fU[4, 1 : NBPOINTS + 2] - fU[4, 0 : NBPOINTS + 1])
 
 ## @njit
 def ComputeDelta_t(fP):
@@ -1061,7 +1074,10 @@ if TIMESCHEME == "Forward Euler":
     #           U^{n+1}_j = U^{n}_j - Dt/Dx(F^n_{j+1/2} - F^n_{j-1/2}) + Dt S^n_j            #
     ##########################################################################################
     n_old_U_ey_old = np.copy(P[1,:] * P[5,:])
-    J = compute_I(P, V, False, n_old_U_ey_old, empirical_term_interp_y, empirical_term_interp_x)
+    J = compute_I(P, V, False, n_old_U_ey_old)
+    # print(f"current: {J:.3f} A")
+    # print(f"I_calc = {P[1, 10] * phy_const.e * A0 * (P[2, 10] - P[4, 10]):.3e} A")
+    # sys.exit()
 
     while time < TIMEFINAL:
 
@@ -1087,12 +1103,27 @@ if TIMESCHEME == "Forward Euler":
         SetInlet(P[:, 0], U_LeftGhost, P_LeftGhost, J, 1)
         SetOutlet(P[:, -1], U_RightGhost, P_RightGhost, J)
 
+        # print("~~~ boundaires ~~~")
+        # print(sum(U_LeftGhost), sum(U_RightGhost))
+        # print(sum(P_LeftGhost), sum(P_RightGhost))
+        # print("~~~~~~~~~~~~~~~~~~")
+
         # Compute the Fluxes in the center of the cell
-        InviscidFlux(np.concatenate([P_LeftGhost, P, P_RightGhost], axis=1), F_cell)
+        InviscidFlux(np.concatenate([P_LeftGhost, P, P_RightGhost], axis=1), F_cell, tau_xy, heat_flux)
+
+        # print("~~~ Fluxes ~~~")
+        # print(sum(F_cell[0, :]), np.shape(F_cell))
+        # print(sum(F_cell[1, :]), np.shape(F_cell))
+        # print(sum(F_cell[2, :]), np.shape(F_cell))
+        # print(sum(F_cell[3, :]), np.shape(F_cell))
+        # print(sum(F_cell[4, :]), np.shape(F_cell))
+        # print("~~~~~~~~~~~~~~")
 
         # Compute the convective Delta t
         Delta_t = ComputeDelta_t(np.concatenate([P_LeftGhost, P, P_RightGhost], axis=1))
-        #print(Delta_t)
+
+        # print("Delta_t = ", Delta_t)
+
         # Compute the Numerical at the interfaces
         NumericalFlux(
             np.concatenate([P_LeftGhost, P, P_RightGhost], axis=1),
@@ -1101,8 +1132,25 @@ if TIMESCHEME == "Forward Euler":
             F_interf
         )
 
+        # print("~~~ Numerical Fluxes ~~~")
+        # print(sum(F_interf[0, :]), np.shape(F_interf))
+        # print(sum(F_interf[1, :]), np.shape(F_interf))
+        # print(sum(F_interf[2, :]), np.shape(F_interf))
+        # print(sum(F_interf[3, :]), np.shape(F_interf))
+        # print(sum(F_interf[4, :]), np.shape(F_interf))
+        # print("~~~~~~~~~~~~~~~~~~~~~~~~")
+
         # Compute the source in the center of the cell
         Source(P, S)
+
+        # print("~~~ Source ~~~")
+        # print(sum(S[0, :]), np.shape(S))
+        # print(sum(S[1, :]), np.shape(S))
+        # print(sum(S[2, :]), np.shape(S))
+        # print(sum(S[3, :]), np.shape(S))
+        # print(sum(S[4, :]), np.shape(S))
+        # print("~~~~~~~~~~~~~~")
+
         if HEATFLUX and not IMPlICIT:
             dt_HF = heatFlux(np.concatenate([P_LeftGhost, P, P_RightGhost], axis=1), S)
             Delta_t = min(dt_HF, Delta_t)
@@ -1110,8 +1158,6 @@ if TIMESCHEME == "Forward Euler":
             dt_HF = Delta_t
             Te = heatFluxImplicit(np.concatenate([P_LeftGhost, P, P_RightGhost], axis=1))
             print(Te)
-        
-
 
         # Update the solution
         U[:, :] = (
@@ -1122,19 +1168,46 @@ if TIMESCHEME == "Forward Euler":
             + Delta_t * S[:, :]
         )
 
+        # print("~~~ U ~~~")
+        # print(sum(U[0, :]), np.shape(U))
+        # print(sum(U[1, :]), np.shape(U))
+        # print(sum(U[2, :]), np.shape(U))
+        # print(sum(U[3, :]), np.shape(U))
+        # print(sum(U[4, :]), np.shape(U))
+        # print("~~~~~~~~~~")
+
+
         # Prevent the energy to be strictly negative
-        U[3,:] = np.where(U[3,:] >= 0., U[3,:], 0.)
+        # U[3,:] = np.where(U[3,:] >= 0., U[3,:], 0.)
 
         # Compute the current
-        J = compute_I(P, V, False, n_old_U_ey_old, empirical_term_interp_y, empirical_term_interp_x)
-
+        J = compute_I(P, V, False, n_old_U_ey_old)
+        # print(f"current: {J:.3f} A")
         # Compute the primitive vars for next step
         ConsToPrim(U, P, J)
+        # print("~~~ P ~~~")
+        # print(sum(P[0, :]), np.shape(P))
+        # print(sum(P[1, :]), np.shape(P))
+        # print(sum(P[2, :]), np.shape(P))
+        # print(sum(P[3, :]), np.shape(P))
+        # print(sum(P[4, :]), np.shape(P))
+        # print("~~~~~~~~~~")
 
         n_old_U_ey_old = np.copy(P[1, :] * P[5, :])
 
+        # print("n_old_U_ey_old = ", sum(n_old_U_ey_old))
+
+        P[3, :] = np.where(P[3, :] >= T_min, P[3, :], T_min)
+        P_LeftGhost[3] = T_min if P_LeftGhost[3] <= T_min else P_LeftGhost[3]
+        P_RightGhost[3] = T_min if P_RightGhost[3] <= T_min else P_RightGhost[3]
+        PrimToCons(P, U)
+
+        # Update the time
         time += Delta_t
+        # if iter > 50000:
+        #     sys.exit()
         iter += 1
+        # sys.exit()
 
 if TIMESCHEME == "TVDRK3":
 

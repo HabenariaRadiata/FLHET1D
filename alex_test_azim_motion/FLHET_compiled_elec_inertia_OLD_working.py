@@ -294,7 +294,7 @@ def Source(fP, fS, fBarr, fisSourceImposed, fenableIonColl, wall_inter_type:str,
         RieX = empirical_term_interp_x
         # print(len(RieY))
         # RieY -= calculate_Rei(ni, Te, Ue_y)
-        RieY -= Rei_sat(ni, Te, vi, fDelta_x[0], fMi)
+        # RieY -= Rei_sat(ni, Te, vi, fDelta_x[0], fMi)
 
         # print(len(RieY))
     else:
@@ -331,7 +331,15 @@ def Source(fP, fS, fBarr, fisSourceImposed, fenableIonColl, wall_inter_type:str,
     fS[4, :] = (
         RieY + phy_const.e * ni * fBarr * ve
         )  # Momentum electrons
-
+    # print("~~~~~~~~~~~ IN SOURCE ~~~~~~~~~~~")
+    # print("RieY", sum(RieY))
+    # print("empirical_term_interp_y", sum(empirical_term_interp_y))
+    # print("ve", sum(ve))
+    # print("Barr", sum(fBarr))
+    # print("ni", sum(ni))
+    # print("Ue_y", sum(Ue_y))
+    # print("fS[4, :]", sum(fS[4, :]))
+    # print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     #+ phy_const.e*ni*Te*div_u  #- gradI_term*ni*Te*grdI          # Energy in Joule
 
 
@@ -630,9 +638,9 @@ def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1,
             RieY = np.copy(empirical_term_interp_y)
             # plt.figure()
             # plt.plot(RieY, label="1")
-            RieX = empirical_term_interp_x
+            RieX = np.copy(empirical_term_interp_x)
             # RieY -= calculate_Rei(ni, Te, Ue_y)
-            RieY -= Rei_sat(ni, Te, vi, fDelta_x[0], fMi)
+            # RieY -= Rei_sat(ni, Te, vi, fDelta_x[0], fMi)
 
             # plt.plot(RieY, label="2")
             # plt.legend()
@@ -641,35 +649,22 @@ def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1,
             RieX = -phy_const.m_e * nu_m * ni * ve
             RieY = -phy_const.m_e * nu_m * ni * Ue_y
 
-        from scipy import integrate
+        # from scipy import integrate
 
         Term_1 = Ue_y * fBarr + div_p / (ni) - RieX / (phy_const.e * ni) + vi * fBarr
         Term_1 += RieY / (phy_const.e * ni) - div_mnuxuy / (phy_const.e * ni) - dt_m_n_uey / (phy_const.e * ni)
-        # print("2 Term_1: " Term_1[-4:])
-        # print("2 Ue_y: ", (Ue_y* fBarr)[-4:])
-        # print("2 div_p: ", (div_p / (ni))[-4:])
-        # print("2 RieX: ", (RieX / (phy_const.e * ni))[-4:])
-        # print("2 vi: ", (vi * fBarr)[-4:])
-        # print("2 RieY: ", (RieY / (phy_const.e * ni))[-4:])
-        # print("2 div_mnuxuy: ", (div_mnuxuy / (phy_const.e * ni))[-4:])
-
-        value_simpson_1 = integrate.simpson(Term_1 , x=fx_center)
+        # value_simpson_1 = integrate.simpson(Term_1 , x=fx_center)
         Term_1 = np.append(Term_1, Term_1[-1] + Term_1[-1] - Term_1[-2])
-        value_simpson_11 = simpson(Term_1, np.append(fx_center, fx_center[-1] + fx_center[1] - fx_center[0]))
+
+        value_simpson_1 = simpson(Term_1, np.append(fx_center, fx_center[-1] + fx_center[1] - fx_center[0]))
         top = fV + value_simpson_1
 
         Term_2 = fBarr / ni - phy_const.electron_mass * div_uey / (phy_const.e * ni)
-        # print("2 Term_2: ", Term_2[-4:])
-        # print("2 fBarrr: ", (fBarr / ni)[-4:])
-        # print("2 div_uey: ", (div_uey / (phy_const.e * ni))[-4:])
-
-        value_simpson_2 = integrate.simpson(Term_2 , x=fx_center)
         Term_2 = np.append(Term_2, Term_2[-1] + Term_2[-1] - Term_2[-2])
-        # Term_2 = linear_extrapolation_end(Term_2, 1)
-        # value_simpson_2 = simpson(Term_2, np.append(fx_center, fx_center[-1] + fx_center[1] - fx_center[0]))
-        # print("2 value_simpson_2", value_simpson_2)
+
+        # value_simpson_2 = integrate.simpson(Term_2 , x=fx_center)
+        value_simpson_2 = simpson(Term_2, np.append(fx_center, fx_center[-1] + fx_center[1] - fx_center[0]))
         bottom = phy_const.e * fA0 * fRext + value_simpson_2
-        # print("2 bottom", bottom)
 
         I0 = top / bottom  # Discharge current density
         # print(I0)
@@ -682,7 +677,6 @@ def compute_I(fP, fV, t, fBarr, wall_inter_type:str,fx_center, fESTAR, fMi, fR1,
             plt.legend()
             plt.show()
             print(I0* phy_const.e * fA0, top, bottom)
-            print(value_simpson_1, value_simpson_11)
             if np.abs(I0) > 1e25:
                 sys.exit()
         I0 = (I0 * phy_const.e * fA0)
@@ -800,13 +794,20 @@ def ComputeDelta_t(fP, fNBPOINTS, fMi, fCFL, fDelta_x):
     lambda_max_i_R = computeMaxEigenVal_i(fP[:, 1 : fNBPOINTS + 2], fMi)
     lambda_max_i_L = computeMaxEigenVal_i(fP[:, 0 : fNBPOINTS + 1], fMi)
     lambda_max_i_12 = np.maximum(lambda_max_i_L, lambda_max_i_R)
-
+    
     lambda_max_e_R = computeMaxEigenVal_e(fP[:, 1 : fNBPOINTS + 2], fMi)
     lambda_max_e_L = computeMaxEigenVal_e(fP[:, 0 : fNBPOINTS + 1], fMi)
     lambda_max_e_12 = np.maximum(lambda_max_e_L, lambda_max_e_R)
 
+    # print("lambda_max_e_12", lambda_max_e_12[:3], lambda_max_i_12[:3], fCFL)
+    # print(max(np.maximum(lambda_max_e_R[:-1],  lambda_max_e_R[:-1])))
+    # print(np.argmax(np.maximum(lambda_max_e_R[:-1],  lambda_max_e_R[:-1])))
+
     # Delta_t = fCFL * fDelta_x / (max(max(lambda_max_e_12), max(lambda_max_i_12)))
-    Delta_t = fCFL * min(fDelta_x / np.maximum(lambda_max_e_R[:-1],  lambda_max_e_R[:-1]))
+    Delta_t = fCFL * min(fDelta_x / np.maximum(lambda_max_e_12[:-1],  lambda_max_i_12[:-1]))
+    # print("aaa", min(fDelta_x / np.maximum(lambda_max_e_R[:-1],  lambda_max_e_R[:-1])))
+    # print("bbb", .000125/min(fDelta_x / np.maximum(lambda_max_e_R[:-1],  lambda_max_e_R[:-1])))
+    # print(Delta_t, fDelta_x[:4])
     return Delta_t
 
 
@@ -961,13 +962,13 @@ def main(fconfigfile):
 
     try:
         empirical_term = np.loadtxt('empirical_term_add_5.txt')
-        empirical_term = np.loadtxt('no_Rei.txt') 
+        # empirical_term = np.loadtxt('no_Rei.txt') 
         empirical_term_interp_y = np.interp(x_center, empirical_term[:, 0]/100, empirical_term[:, 1])
         print("Empirical term y loaded.")
         empirical_term_interp_x = np.interp(x_center, empirical_term[:, 0]/100, empirical_term[:, 2])
         print("Empirical term x loaded.")
         tau_xy_temp = np.interp(x_center, empirical_term[:, 0]/100, empirical_term[:, 3])
-        tau_xy = linear_extrapolation_multi(tau_xy_temp, 2)*0
+        tau_xy = linear_extrapolation_multi(tau_xy_temp, 2)
         print("tau_xy loaded")
         heat_flux_temp = np.interp(x_center, empirical_term[:, 0]/100, empirical_term[:, 4])
         heat_flux = linear_extrapolation_multi(heat_flux_temp, 2)*0
@@ -1022,7 +1023,8 @@ def main(fconfigfile):
     # We initialize the primitive variables
     
     # with open('/home/petronio/Nextcloud_sync/code/FLHET1D/alex_test_azim_motion/Data/MacroscopicVars_000038.pkl', 'rb') as f:
-    with open('/home/petronio/Nextcloud_sync/code/FLHET1D/alex_test_azim_motion/Results/testInertia_Initialization_NoConstantCurrent_NewSource_restart_interp/Data/MacroscopicVars_000030.pkl', 'rb') as f:
+    # with open('/home/petronio/Nextcloud/code/FLHET1D/alex_test_azim_motion/Results/testInertia_Initialization_NoConstantCurrent_NewSource_restart_interp/Data/MacroscopicVars_000030.pkl', 'rb') as f:
+    with open('/home/petronio/Nextcloud/code/FLEHET1D/alex_test_azim_motion/Results/Data/MacroscopicVars_000030.pkl','rb') as f:
             [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
     # with open('./Results/half_gradPxy_emp_term_2/Data/MacroscopicVars_000130.pkl', 'rb') as f:
     #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
@@ -1056,26 +1058,17 @@ def main(fconfigfile):
         Ve = np.interp(x_center, x_center_init, P_init[4, :])
         Ue_y = np.interp(x_center, x_center_init, P_init[5, :])
 
+        P[0, :] = ng # Initial ng
         P[1, :] = ni  # Initial ni
         P[2, :] = vi  # Initial vi
         P[3, :] = Te  # Initial Te
         P[4, :] = Ve # Initial Ve
-
-
-        # plt.figure()
-        # plt.plot(tau_xy[1:len(tau_xy)-1]*Ue_y)
-        # plt.plot(heat_flux)
-        # plt.show()
-
-        # P[5, :] = P_init[4, :]*wce_init/nu_m_init    # Initial Ue_y
         try:
             P[5, :] = Ue_y    # Initial Ue_y
         except:
             P[5, :] = P_init[4, :]*wce_init/nu_m_init    # Initial Ue_y
-        #P[0,:] = InitNeutralDensity(x_center, ng_anode, VG, P, IonizationConfig['Type'], SIZMAX, LSIZ1, LSIZ2) # initialize n_g in the space so that it is cst in time if there is no wall recombination.
-        ### Warning, in the code currently, neutrals dyanmic is canceled.
-        P[0,:] = ng
     else:
+        P[0, :] = ng_anode
         P[1, :] *= NI0  # Initial ni
         P[2, :] *= 0.0  # Initial vi
         P[3, :] *= TE0  # Initial Te
@@ -1083,7 +1076,7 @@ def main(fconfigfile):
         P[4, :] *= P[2, :] - J / (A0 * phy_const.e * P[1, :])  # Initial Ve
         #P[0,:] = InitNeutralDensity(x_center, ng_anode, VG, P, IonizationConfig['Type'], SIZMAX, LSIZ1, LSIZ2) # initialize n_g in the space so that it is cst in time if there is no wall recombination.
         ### Warning, in the code currently, neutrals dyanmic is canceled.
-        P[0,:] = ng_anode
+        P[5, :] = P_init[4, :]*wce_init/nu_m_init
 
     n_old_U_ey_old = np.copy(P[1,:] * P[5,:])
 
@@ -1120,13 +1113,8 @@ def main(fconfigfile):
     if TIMESCHEME == "Forward Euler":
         # J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t)
         J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old, empirical_term_interp_y, empirical_term_interp_x)
-        # J_1_temp = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old, empirical_term_interp_y)
-        print(f"J_1 = {J:.3e} A")
-        # print(f"J_1_temp = {J_1_temp:.3e} A")
+        print(f"current: {J:.3f} A")
         print(f"I_calc = {P[1,10]* phy_const.e * A0 * (P[2,10] - P[4,10]):.3e} A")
-        # np.savetxt("values.txt", np.stack([Barr, x_center, alpha_B], axis=0))
-
-
         while time < TIMEFINAL:
             # Save results
             if (iter % SAVERATE) == 0:
@@ -1139,26 +1127,33 @@ def main(fconfigfile):
                     "\tI = {:.4f}~A".format(J),
                     "\tJ = {:.3e} A/m2".format(J/A0),
                 )
-                # J_0_temp = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t)
-                # J_1_temp = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old)
-                # print(f"J_0_temp = {J_0_temp:.3e} A")
-                # print(f"J_1_temp = {J_1_temp:.3e} A")
                 print(f"I_calc = {P[1,10]* phy_const.e * A0 * (P[2,10] - P[4,10]):.3e} A")
-                # Another way of processing J_d which is equivalent to J_d = I / A0
-                #j_of_x = P[1,:]*phy_const.e*(P[2,:] - P[4,:])
-                #mean_j = (1/LX) * np.sum(j_of_x * Delta_x)
-                #print("J processed another way = {:.3e} A/m2".format(mean_j)) 
+
             # Set the boundaries
-            # np.savetxt("PPP.txt", P)
             SetInlet(P[:, 0], U_Inlet, P_Inlet, Mi, boolSizImposed, MDOT, A0, VG, Te_Cath, J, 1)
             SetOutlet(P[:, -1], U_Outlet, P_Outlet, Mi, A0, Te_Cath, J)
+
+            # print("~~~ boundaires ~~~")
+            # print(sum(U_Inlet[:]), sum(U_Outlet[:]))
+            # print(sum(P_Inlet[:]), sum(P_Outlet[:]))
+            # print("~~~~~~~~~~~~~~~~~~")
 
             # Compute the Fluxes in the center of the cell
             InviscidFlux(np.concatenate([P_Inlet, P, P_Outlet], axis=1), F_cell, VG, Mi, tau_xy, heat_flux)
 
+            # print("~~~ Fluxes ~~~")
+            # print(sum(F_cell[0, :]), np.shape(F_cell))
+            # print(sum(F_cell[1, :]), np.shape(F_cell))
+            # print(sum(F_cell[2, :]), np.shape(F_cell))
+            # print(sum(F_cell[3, :]), np.shape(F_cell))
+            # print(sum(F_cell[4, :]), np.shape(F_cell))
+            # print("~~~~~~~~~~~~~~")
+
             # Compute the convective Delta t
             Delta_t = ComputeDelta_t(np.concatenate([P_Inlet, P, P_Outlet], axis=1), NBPOINTS, Mi, CFL, Delta_x)
-            #print(Delta_t)
+
+            # print("Delta_t = ", Delta_t)
+
             # Compute the Numerical at the interfaces
             NumericalFlux(
                 np.concatenate([P_Inlet, P, P_Outlet], axis=1),
@@ -1170,8 +1165,25 @@ def main(fconfigfile):
                 VG,
             )
 
+            # print("~~~ Numerical Fluxes ~~~")
+            # print(sum(F_interf[0, :]), np.shape(F_interf))
+            # print(sum(F_interf[1, :]), np.shape(F_interf))
+            # print(sum(F_interf[2, :]), np.shape(F_interf))
+            # print(sum(F_interf[3, :]), np.shape(F_interf))
+            # print(sum(F_interf[4, :]), np.shape(F_interf))
+            # print("~~~~~~~~~~~~~~~~~~~~~~~~")
+
             # Compute the source in the center of the cell
             Source(P, S, Barr, boolSizImposed, boolIonColl, wall_inter_type, x_center, imposed_Siz, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, VG, Delta_x, empirical_term_interp_y, empirical_term_interp_x)
+
+            # print("~~~ Source ~~~")
+            # print(sum(S[0, :]), np.shape(S))
+            # print(sum(S[1, :]), np.shape(S))
+            # print(sum(S[2, :]), np.shape(S))
+            # print(sum(S[3, :]), np.shape(S))
+            # print(sum(S[4, :]), np.shape(S))
+            # print("~~~~~~~~~~~~~~")
+
             if HEATFLUX and not IMPlICIT:
                 dt_HF = heatFlux(np.concatenate([P_Inlet, P, P_Outlet], axis=1), S,  np.concatenate([[Barr[0]], Barr, [Barr[-1]]]), wall_inter_type, x_center_extended, ESTAR, Mi, R1, R2, LTHR, KEL, np.concatenate([[alpha_B[0]], alpha_B, [alpha_B[-1]]]), Delta_x)
                 Delta_t = min(dt_HF, Delta_t)
@@ -1191,13 +1203,19 @@ def main(fconfigfile):
                 + Delta_t * S[:, :]
             )
 
+            # print("~~~ U ~~~")
+            # print(sum(U[0, :]), np.shape(U))
+            # print(sum(U[1, :]), np.shape(U))
+            # print(sum(U[2, :]), np.shape(U))
+            # print(sum(U[3, :]), np.shape(U))
+            # print(sum(U[4, :]), np.shape(U))
+            # print("~~~~~~~~~~")
+
             # Compute the current
             # J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t)
             # J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old)
             J = compute_I(P, V, time, Barr, wall_inter_type, x_center, ESTAR, Mi, R1, R2, LTHR, KEL, alpha_B, Delta_x, A0, Rext, Delta_t, False, n_old_U_ey_old, empirical_term_interp_y, empirical_term_interp_x)
-
-            
-            # print(f"J_1 = {J:.3e} A")
+            # print(f"current: {J:.3e} A")
             # print(f"J_1_temp = {J_1_temp:.3e} A")
             # print(f"I_calc = {P[1,10]* phy_const.e * A0 * (P[2,10] - P[4,10]):.3e} A")
 
@@ -1209,19 +1227,34 @@ def main(fconfigfile):
 
             # Compute the primitive vars for next step
             ConsToPrim(U, P, Mi, A0, J)
+            # print("~~~ P ~~~")
+            # print(sum(P[0, :]), np.shape(P))
+            # print(sum(P[1, :]), np.shape(P))
+            # print(sum(P[2, :]), np.shape(P))
+            # print(sum(P[3, :]), np.shape(P))
+            # print(sum(P[4, :]), np.shape(P))
+            # print("~~~~~~~~~~")
 
             n_old_U_ey_old = np.copy(P[1,:] * P[5,:])
+            # print("n_old_U_ey_old = ", sum(n_old_U_ey_old))
 
             # Prevent the energy to be strictly negative
             P[3,:] = np.where(P[3,:] >= T_min, P[3,:], T_min)
             P_Inlet[3] = T_min if P_Inlet[3] <= T_min else P_Inlet[3]
             P_Outlet[3] = T_min if P_Outlet[3] <= T_min else P_Outlet[3]
             PrimToCons(P, U, Mi)
-
             
+            # print("check results")
+            # print(P[:, 10])
+            # print(P[:, 100])
+            # print(P[:, 198])
+            # print(Delta_t, iter)
+            # print("!!!!!!!!!!!!!!!!!")
+            # if iter  > 500s
 
             time += Delta_t
             iter += 1
+            # sys.exit()
 
     if TIMESCHEME == "TVDRK3":
 
