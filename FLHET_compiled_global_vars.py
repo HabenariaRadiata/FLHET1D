@@ -202,7 +202,7 @@ if empirical_term:
         return extended_vec
 
     try:
-        empirical_term = np.loadtxt('alex_test_azim_motion/empirical_term_add_3.txt')
+        empirical_term = np.loadtxt('alex_test_azim_motion/empirical_term_add_5.txt')
         # empirical_term = np.loadtxt('no_Rei.txt')
         empirical_term_interp_y = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 1])
         print("Empirical term y loaded.")
