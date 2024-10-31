@@ -927,7 +927,7 @@ def main(fconfigfile):
         tau_xy = linear_extrapolation_multi(tau_xy_temp, 2)
         print("tau_xy loaded")
         heat_flux_temp = np.interp(x_center, empirical_term[:, 0]/100, empirical_term[:, 4])
-        heat_flux = linear_extrapolation_multi(heat_flux_temp, 2)
+        heat_flux = linear_extrapolation_multi(heat_flux_temp, 2)*0
         print("heatflux loaded")
         # plt.savefig("tau_xy.png")
         # plt.close()

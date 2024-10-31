@@ -9,3 +9,17 @@ martin_std_BM/Results/charoy_checkcase_0_N200_no_hflux_no_coll_retry/Data/
 martin_std_BM/Results/charoy_checkcase_0_N400_no_hflux_no_coll_retry/
 
 martin_std_BM/Results/charoy_checkcase_0_N200_no_hflux_no_coll_retry/
+
+.idea/FLEHET1D.iml
+
+.idea/inspectionProfiles/profiles_settings.xml
+
+.idea/inspectionProfiles/Project_Default.xml
+
+.idea/misc.xml
+
+.idea/vcs.xml
+
+.idea/workspace.xml
+
+*.pyc
