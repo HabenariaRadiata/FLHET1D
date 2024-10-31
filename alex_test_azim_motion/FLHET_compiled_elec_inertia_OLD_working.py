@@ -981,8 +981,11 @@ def main(fconfigfile):
     # with open('/home/petronio/Nextcloud_sync/code/FLHET1D/alex_test_azim_motion/Data/MacroscopicVars_000038.pkl', 'rb') as f:
     # with open('/home/petronio/Nextcloud_sync/code/FLHET1D/alex_test_azim_motion/Results/testInertia_Initialization_NoConstantCurrent_NewSource_restart_interp/Data/MacroscopicVars_000030.pkl', 'rb') as f:
     #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
-    with open('./Results/half_gradPxy_emp_term_2/Data/MacroscopicVars_000130.pkl', 'rb') as f:
+    # with open('./Results/half_gradPxy_emp_term_2/Data/MacroscopicVars_000130.pkl', 'rb') as f:
+    #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
+    with open('/home/petronio/Nextcloud/code/FLEHET1D/FLHET_test/half_gradPxy_emp_term_add_6/Data/MacroscopicVars_000182.pkl', 'rb') as f:
             [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
+
     # with open('./Results/half_gradPxy_emp_term_3/Data/MacroscopicVars_000036.pkl', 'rb') as f:
     #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
     # with open('./Results/half_gradPxy_emp_term_3/Data/MacroscopicVars_000036.pkl', 'rb') as f:
