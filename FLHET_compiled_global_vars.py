@@ -445,6 +445,7 @@ def compute_E(fP):
     ni = fP[1,:]
     Te = fP[3,:]
     ve = fP[4,:]
+    Ue_y = fP[5,:]
 
     me = phy_const.m_e
     wce     = phy_const.e*Barr/me   # electron cyclotron frequency
@@ -488,8 +489,13 @@ def compute_E(fP):
         )  # Effective mobility    dp_dz  = np.gradient(ni*Te, Delta_x)
 
     dp_dz  = gradient(ni*Te, x_center)
-    
-    E = - ve / mu_eff - dp_dz / ni  # Discharge electric field
+
+    div_p = gradient(phy_const.e * ni * Te, x_center)  # To be used with 5./2 and + div_p*ve in line 231
+
+    # E_x = - Ue_y * fBarr - phy_const.m_e / phy_const.e * nu_m * ve - div_p / (phy_const.e * ni)
+    E = - Ue_y * Barr - div_p / (phy_const.e * ni)
+
+    # E = - ve / mu_eff - dp_dz / ni  # Discharge electric field
     return E
 
 
