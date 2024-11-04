@@ -111,6 +111,7 @@ class SimuParameters():
         TestCaseConfig = config["Test Case"]
         self.thomas_BM_testcase = bool(TestCaseConfig["Thomas BM test case"])
         self.empirical_term = bool(TestCaseConfig["Empirical term"])
+        self.empirical_term_path = TestCaseConfig["Empirical term path"]
 
         ##########################################################
         #           NUMERICAL PARAMETERS

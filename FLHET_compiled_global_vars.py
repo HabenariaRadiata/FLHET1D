@@ -1,11 +1,8 @@
 import numpy as np
 import math
 import scipy.constants as phy_const
-import matplotlib.pyplot as plt
 import os
-import pandas as pd
 import pickle
-import configparser
 import sys
 from numba import njit
 import time as ttime
@@ -25,7 +22,7 @@ from modules.simu_params import SimuParameters
 # F = [rhog*Vg, rhoUi, rhoUi*Ui + ne*e*Te, 5/2 ne*e*Te*Ue].
 #
 # We use the following primitive variables
-# P = [ng, ni, ui,  Te, ve]              TODO: maybe add , E
+# P = [ng, ni,  ui,  Te, ve_x, ve_y]
 #
 # At the boundaries we impose
 # Inlet:
@@ -37,7 +34,6 @@ from modules.simu_params import SimuParameters
 # The user can change the PHYSICAL PARAMETERS
 # or the NUMERICAL PARAMETERS
 #
-# TODO: Test with Thomas' benchmark
 #
 # This script FLHET_compiled.py has a few functions compiled with numba.
 # It is approximately 2.3 times faster than its not compiled counterpart:
@@ -84,7 +80,12 @@ boolCircuit          = msp.Circuit
 V                    = msp.V0
 thomas_BM_testcase   = msp.thomas_BM_testcase
 empirical_term       = msp.empirical_term
+empirical_term_path  = msp.empirical_term_path
 T_min = 1.
+
+# Set global variables
+me = phy_const.m_e
+
 
 if os.path.exists(Resultsdir):
     # delete current data in location:
@@ -157,11 +158,14 @@ def compute_B_array():
 
 Barr = compute_B_array()
 Barr_extended = np.concatenate([[Barr[0]], Barr, [Barr[-1]]])
+wce = phy_const.e * Barr / me  # electron cyclotron frequency
 
 alpha_B1, alpha_B2  = msp.extract_anom_coeffs()
 
 def compute_alphaB_array():
-
+    '''
+    Compute the anomalous transport coefficient array alpha_B.
+    '''
     alpha_B = (np.ones(NBPOINTS) * alpha_B1)  # Anomalous transport coefficient inside the thruster
     alpha_B = np.where(x_center < msp.LTHR, alpha_B, alpha_B2)  # Anomalous transport coefficient in the plume
     alpha_B_smooth = np.copy(alpha_B)
@@ -176,33 +180,37 @@ def compute_alphaB_array():
 alpha_B = compute_alphaB_array()
 alpha_B_extended = np.concatenate([[alpha_B[0]], alpha_B, [alpha_B[-1]]])
 
+
+def linear_extrapolation_multi(vec, num_points=3):
+    '''
+    Linearly extrapolate the first and last few points of a vector.
+    '''
+    # Use at least two points for linear extrapolation
+    if len(vec) < 2:
+        raise ValueError("Vector must have at least two elements for extrapolation.")
+
+    # Ensure num_points is not greater than the vector length
+    num_points = min(num_points, len(vec) - 1)
+
+    # Fit a line (degree 1 polynomial) to the first few points
+    start_fit = np.polyfit(range(num_points), vec[:num_points], 1)
+    # Predict the value before the first point using the line
+    start_extrapolated_value = np.polyval(start_fit, -1)  # x = -1 for extrapolation one step back
+
+    # Fit a line to the last few points
+    end_fit = np.polyfit(range(len(vec) - num_points, len(vec)), vec[-num_points:], 1)
+    # Predict the value after the last point using the line
+    end_extrapolated_value = np.polyval(end_fit, len(vec))  # x = len(vec) for extrapolation one step forward
+
+    # Add the extrapolated values to the vector
+    extended_vec = np.insert(vec, 0, start_extrapolated_value)  # Insert at the beginning
+    extended_vec = np.append(extended_vec, end_extrapolated_value)  # Append at the end
+
+    return extended_vec
+
 if empirical_term:
-    def linear_extrapolation_multi(vec, num_points=3):
-        # Use at least two points for linear extrapolation
-        if len(vec) < 2:
-            raise ValueError("Vector must have at least two elements for extrapolation.")
-
-        # Ensure num_points is not greater than the vector length
-        num_points = min(num_points, len(vec) - 1)
-
-        # Fit a line (degree 1 polynomial) to the first few points
-        start_fit = np.polyfit(range(num_points), vec[:num_points], 1)
-        # Predict the value before the first point using the line
-        start_extrapolated_value = np.polyval(start_fit, -1)  # x = -1 for extrapolation one step back
-
-        # Fit a line to the last few points
-        end_fit = np.polyfit(range(len(vec) - num_points, len(vec)), vec[-num_points:], 1)
-        # Predict the value after the last point using the line
-        end_extrapolated_value = np.polyval(end_fit, len(vec))  # x = len(vec) for extrapolation one step forward
-
-        # Add the extrapolated values to the vector
-        extended_vec = np.insert(vec, 0, start_extrapolated_value)  # Insert at the beginning
-        extended_vec = np.append(extended_vec, end_extrapolated_value)  # Append at the end
-
-        return extended_vec
-
     try:
-        empirical_term = np.loadtxt('alex_test_azim_motion/empirical_term_add_5.txt')
+        empirical_term = np.loadtxt(empirical_term_path)
         # empirical_term = np.loadtxt('no_Rei.txt')
         empirical_term_interp_y = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 1])
         print("Empirical term y loaded.")
@@ -213,7 +221,10 @@ if empirical_term:
         print("tau_xy loaded")
         heat_flux_temp = np.interp(x_center, empirical_term[:, 0] / 100, empirical_term[:, 4])
         heat_flux = linear_extrapolation_multi(heat_flux_temp, 2) * 0
-        print("heatflux loaded")
+        if sum(heat_flux) == 0:
+            print("No heat flux")
+        else:
+            print("heatflux loaded")
     except:
         print("No empirical term file found.")
 
@@ -236,9 +247,6 @@ P_RightGhost = np.ones((6, 1))  # Ghost cell on the right
 
 if msp.START_FROM_INPUT:
     list_of_pkls = glob.glob(msp.INPUT_DIR+"/MacroscopicVars*.pkl")
-    print("len(list_of_pkls)", len(list_of_pkls), msp.INPUT_DIR)
-    # assert(len(list_of_pkls) == 1) # TODO: To remove??
-    # INPUT_FILE  = list_of_pkls[0]
     INPUT_FILE  = list_of_pkls[-1]
     print("Simulation starts from the profiles stored in ", INPUT_FILE)
 
@@ -287,7 +295,7 @@ else:
         """Return a smoothed version of the array bulkarray. It contains the bulk e-
         initial temperature. It smoothes the possible jump between this bulk
         value and the cathode e- temperature. Otherwise it would introduce a
-        harmful discontinuity. 
+        harmful discontinuity.
 
         Args:
             bulk_array (np.ndarray): array containg the initial bulk T_e.
@@ -298,7 +306,7 @@ else:
         for i in range(nsmooth):
             a = (i+1)/(nsmooth+1)
             bulk_copy[-1-i] = bulk_array[-1-i]*a + Toutlet*(1 - a)
-        
+
         return bulk_copy
 
     P[3, :] = SmoothInitialTemperature(P[3, :], Te_Cath)
@@ -426,6 +434,9 @@ def CumTrapz(y, d):
 
 # @njit
 def gradient(y, x):
+    '''
+    Compute the gradient of a function y(x) using a second order centered difference scheme.
+    '''
     dp_dz = np.zeros(y.shape)
     dp_dz[1:-1] = (y[2:] - y[:-2]) / (x[2:] - x[:-2])
     dp_dz[0] = 2 * dp_dz[1] - dp_dz[2]
@@ -479,23 +490,23 @@ def compute_E(fP):
     ##################################################
     #       Compute the electron properties          #
     ##################################################
-
     nu_m = (
-        ng * KEL + alpha_B * wce + nu_ew
-        )  # Electron momentum - transfer collision frequency
-    
-    mu_eff = (phy_const.e / (me* nu_m)) * (
-        1.0 / (1 + (wce / nu_m) ** 2)
-        )  # Effective mobility    dp_dz  = np.gradient(ni*Te, Delta_x)
+            ng * KEL + alpha_B * wce + nu_ew
+    )  # Electron momentum - transfer collision frequency
 
-    dp_dz  = gradient(ni*Te, x_center)
+    if sum(Ue_y) != 0.:
 
-    div_p = gradient(phy_const.e * ni * Te, x_center)  # To be used with 5./2 and + div_p*ve in line 231
+        div_p = gradient(phy_const.e * ni * Te, x_center)  # To be used with 5./2 and + div_p*ve in line 231
+        E = - Ue_y * Barr - div_p / (phy_const.e * ni) # electric field
+    else:
+        # old scheme without Ue_y
+        mu_eff = (phy_const.e / (me* nu_m)) * (
+            1.0 / (1 + (wce / nu_m) ** 2)
+            )  # Effective mobility    dp_dz  = np.gradient(ni*Te, Delta_x)
 
-    # E_x = - Ue_y * fBarr - phy_const.m_e / phy_const.e * nu_m * ve - div_p / (phy_const.e * ni)
-    E = - Ue_y * Barr - div_p / (phy_const.e * ni)
+        dp_dz  = gradient(ni*Te, x_center)
+        E = - ve / mu_eff - dp_dz / ni  # Discharge electric field
 
-    # E = - ve / mu_eff - dp_dz / ni  # Discharge electric field
     return E
 
 
@@ -511,9 +522,6 @@ def Source(fP, fS):
     Te = fP[3, :]
     ve = fP[4, :]
     Ue_y = fP[5, :]
-
-    me = phy_const.m_e # electron mass TODO: make this a global variable
-    wce = phy_const.e * Barr / me # electron cyclotron frequency
 
     #############################
     #     Compute the rates     #
@@ -544,8 +552,6 @@ def Source(fP, fS):
         nu_iw = np.zeros(Te.shape, dtype=float)     # Ion - wall collision rate
         nu_ew = np.zeros(Te.shape, dtype=float)     # Electron - wall collision rate
 
-
-
     # TODO: Put decreasing wall collisions (Not needed for the moment)
     #    if decreasing_nu_iw:
     #        index_L1 = np.argmax(z > L1)
@@ -574,9 +580,9 @@ def Source(fP, fS):
         RieY = -phy_const.m_e * nu_m * ni * Ue_y
         RieX = -phy_const.m_e * ni * nu_m * ve
 
-    mu_eff = (phy_const.e / (me* nu_m)) * (
-        1.0 / (1 + (wce / nu_m) ** 2)
-        )  # Effective mobility
+    # mu_eff = (phy_const.e / (me* nu_m)) * (
+    #     1.0 / (1 + (wce / nu_m) ** 2)
+    #     )  # Effective mobility
 
     #div_u   = gradient(ve, d=Delta_x)               # To be used with 3./2. in line 160 and + phy_const.e*ni*Te*div_u  in line 231
     
@@ -587,7 +593,7 @@ def Source(fP, fS):
 
     E_x = - Ue_y * Barr - div_p / (phy_const.e * ni)
 
-
+    # Compute the source terms
     fS[0, :] = (-d_IC * Siz_arr + nu_iw * ni) * Mi # Gas Density
     fS[1, :] = (Siz_arr - nu_iw * ni) * Mi # Ion Density
     fS[2, :] = (
@@ -595,24 +601,18 @@ def Source(fP, fS):
         + RieX
         - phy_const.e * ni * Barr * Ue_y
         - nu_iw * ni * vi * Mi
-        )  # Momentum
-    # fS[3,:] = (
-    #     - d_IC * Siz_arr * Eion * gamma_i * phy_const.e  +  (1.0 - d_IC)*Siz_arr* 1.5 * Te_inj* phy_const.e
-    #     - nu_ew * ni * Ew * phy_const.e
-    #     + (1./mu_eff) * ni * ve**2 * phy_const.e
-    #     + div_p*ve
-    # ) TODO: check if this implementation is correct
+        )  # Momentum electrons axial
     fS[3,:] = (
         - d_IC * Siz_arr * Eion * gamma_i * phy_const.e
         - nu_ew * ni * Ew * phy_const.e
         - phy_const.e * ni * E_x * ve
         + 1.5 * Siz_arr * phy_const.e * 10. #
         - 0.5 * Siz_arr * phy_const.m_e * Ue_y**2 # new term
-        )
-
+        ) # Electron energy
     fS[4, :] = (
         RieY + phy_const.e * ni * Barr * ve
-    )  # Momentum electrons
+    )  # Momentum electrons azimuthal
+
     # print("~~~~~~~~~~~ IN SOURCE ~~~~~~~~~~~")
     # print("RieY", sum(RieY))
     # print("empirical_term_interp_y", sum(empirical_term_interp_y))
@@ -633,12 +633,6 @@ def heatFlux(fP, fS):
     ng = fP[0, :] # It contains ghost cells
     ni = fP[1, :] # It contains ghost cells
     Te = fP[3, :] # It contains ghost cells
-
-    # fBarr_extended    = np.concatenate([[fBarr[0]], fBarr, [fBarr[-1]]])
-    # falpha_B_extended = np.concatenate([[falpha_B[0]], falpha_B, [falpha_B[-1]]])
-
-    me = phy_const.m_e
-    wce = phy_const.e * Barr / me # electron cyclotron frequency
 
     #############################
     #       Compute the rates   #
@@ -813,7 +807,7 @@ def simpson(y, x):
 
 # @njit
 def calculate_Rei(ne, Te, uey):
-    """ Calculate the electron-ion collision friction using a Maxwellian distribution """
+    """ Calculate the theoretical electron-ion collision friction using a Maxwellian distribution """
     lambda_D = ((phy_const.epsilon_0 * Te * phy_const.elementary_charge)/(ne * phy_const.elementary_charge**2))**.5
     omega_pe = (ne * phy_const.elementary_charge)/(phy_const.electron_mass * phy_const.epsilon_0)**.5
     Ewave = 1.5 * ne * Te * phy_const.elementary_charge / 432
@@ -824,7 +818,7 @@ def calculate_Rei(ne, Te, uey):
 # @njit
 def Rei_sat(ne, Te, vix, dx, mass):
     """
-    Calculate the saturated electron-ion collision friction
+    Calculate the saturated electron-ion collision friction using the empirical formula
     """
     grad_term = np.gradient(vix * ne * Te, dx)
     cs = phy_const.elementary_charge * Te / mass
@@ -833,8 +827,8 @@ def Rei_sat(ne, Te, vix, dx, mass):
 # Compute the Current
 # @njit
 def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0):
+    ''' Compute the discharge current using the old or the new scheme '''
 
-    # TODO: This is already computed! Maybe move to the source
     #############################################################
     #       We give a name to the vars to make it more readable
     #############################################################
@@ -845,13 +839,9 @@ def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0):
     ve = fP[4, :]
     Ue_y = fP[5, :]
 
-    me = phy_const.m_e # electron mass TODO: make this a global variable
-    wce = phy_const.e * Barr / me # electron cyclotron frequency
-
     #############################
     #       Compute the rates   #
     #############################
-
     sigma = 2.0 * Te / ESTAR  # SEE yield
     sigma[sigma > 0.986] = 0.986
     if wall_inter_type == "Default":
@@ -865,31 +855,6 @@ def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0):
         nu_iw = np.zeros(Te.shape, dtype=float)     # Ion - wall collision rate
         nu_ew = np.zeros(Te.shape, dtype=float)     # Electron - wall collision rate
 
-    # Electron momentum - transfer collision frequency
-    # nu_m = ng * KEL + alpha_B * wce + nu_ew
-    #
-    # mu_eff = (phy_const.e / (me* nu_m)) * (
-    #     1.0 / (1 + (wce / nu_m) ** 2)
-    # )  # Effective mobility
-    #
-    # dp_dz = gradient(ni*Te, x_center)
-    #
-    # value_trapz_1 = (
-    #     np.sum(
-    #         ( (vi / mu_eff + dp_dz / ni)[1:] + (vi / mu_eff + dp_dz / ni)[:-1] ) * (x_center[1:] - x_center[:-1]) / 2.0
-    #         )
-    # )
-    # top = fV + value_trapz_1
-    #
-    # value_trapz_2 = (
-    #     np.sum(
-    #         ((1.0 / (mu_eff * ni))[1:] + (1.0 / (mu_eff * ni))[:-1]) * (x_center[1:] - x_center[:-1]) / 2.0
-    #         )
-    # )
-    # value_trapz_2 = np.trapz((1.0 / (mu_eff * ni)) , x_center)
-    # bottom = phy_const.e * A0 * Rext + value_trapz_2
-    #
-    # J0 = top / bottom  # Discharge current density
     if old_curr:
         # Electron momentum - transfer collision frequency
         nu_m = ng * KEL + alpha_B * wce + nu_ew
@@ -944,6 +909,7 @@ def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0):
 
 # @njit
 def SetInlet(fP_LeftColumn, fU_ghost, fP_ghost, fJ=0.0, moment=1):
+    ''' Impose the left boundary conditions '''
     #TODO: change the Dirichlet BCs so that a fixed value s is achieved in the frontier x=0. So the ghost value must be s_g = 2*s - s[0], where s[0] is the left value of the bulk array. Currently only v_i is computed this way to achieve the Bohm velocity at the frontier. It is not the case for n_g and T_e.
     fP_LC   = fP_LeftColumn     # renaming for more elegance 
 
@@ -975,6 +941,7 @@ def SetInlet(fP_LeftColumn, fU_ghost, fP_ghost, fJ=0.0, moment=1):
 
 # @njit
 def SetOutlet(fP_RightColumn, fU_ghost, fP_ghost, J=0.0):
+    ''' Impose the right boundary conditions '''
     #TODO: change the Dirichlet BCs so that a fixed value s is achieved in the frontier x=0. So the ghost value must be s_g = 2*s - s[0], where s[0] is the left value of the bulk array. It is not the case for T_e.
     fP_RC   = fP_RightColumn    # renaming for more elegance
 
@@ -1064,12 +1031,10 @@ def ComputeDelta_t(fP):
 
     return Delta_t
 
+########################################################################################################################
+############### START THE MAIN LOOP ####################################################################################
+########################################################################################################################
 
-mu_eff_arr = compute_mu(P)
-print(f"Checking mu value [m^2 s^-1 V^-1]. Bmax = {msp.BMAX*10000:.0f}\talpha_B1 = {alpha_B1:.4e}\talpha_B2 = {alpha_B2:.4e}")
-#print(mu_eff_arr)
-print(f"\tMean value over domain space  {np.mean(mu_eff_arr):.6e}")
-print(f"\tStd deviation:                {np.std(mu_eff_arr):.6e}")
 
 # We initialize the conservative variables
 PrimToCons(P, U)
@@ -1079,11 +1044,9 @@ if TIMESCHEME == "Forward Euler":
     #           Loop with Forward Euler                                                      #
     #           U^{n+1}_j = U^{n}_j - Dt/Dx(F^n_{j+1/2} - F^n_{j-1/2}) + Dt S^n_j            #
     ##########################################################################################
+    print("Using Forward Euler scheme")
     n_old_U_ey_old = np.copy(P[1,:] * P[5,:])
     J = compute_I(P, V, False, n_old_U_ey_old)
-    # print(f"current: {J:.3f} A")
-    # print(f"I_calc = {P[1, 10] * phy_const.e * A0 * (P[2, 10] - P[4, 10]):.3e} A")
-    # sys.exit()
 
     while time < TIMEFINAL:
 
@@ -1163,7 +1126,6 @@ if TIMESCHEME == "Forward Euler":
         elif HEATFLUX and IMPlICIT:
             dt_HF = Delta_t
             Te = heatFluxImplicit(np.concatenate([P_LeftGhost, P, P_RightGhost], axis=1))
-            print(Te)
 
         # Update the solution
         U[:, :] = (
@@ -1201,8 +1163,6 @@ if TIMESCHEME == "Forward Euler":
 
         n_old_U_ey_old = np.copy(P[1, :] * P[5, :])
 
-        # print("n_old_U_ey_old = ", sum(n_old_U_ey_old))
-
         P[3, :] = np.where(P[3, :] >= T_min, P[3, :], T_min)
         P_LeftGhost[3] = T_min if P_LeftGhost[3] <= T_min else P_LeftGhost[3]
         P_RightGhost[3] = T_min if P_RightGhost[3] <= T_min else P_RightGhost[3]
@@ -1210,12 +1170,10 @@ if TIMESCHEME == "Forward Euler":
 
         # Update the time
         time += Delta_t
-        # if iter > 50000:
-        #     sys.exit()
         iter += 1
-        # sys.exit()
 
 if TIMESCHEME == "TVDRK3":
+    print("Using TVDRK3 scheme")
 
     while time < TIMEFINAL:
         
