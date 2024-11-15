@@ -392,7 +392,7 @@ def compute_mu(fP):
     return mu_eff_arr
 
 
-# @njit
+@njit
 def PrimToCons(fP, fU):
     fU[0, :] = fP[0, :] * Mi # rhog
     fU[1, :] = fP[1, :] * Mi # rhoi
@@ -400,7 +400,7 @@ def PrimToCons(fP, fU):
     fU[3, :] = 0.5 * phy_const.m_e * fP[1, :] * fP[5, :]**2 + 3.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :]  # (1/2*rhoe*Ue_y^2 +  3/2*ni*e*Te)
     fU[4, :] = phy_const.m_e * fP[1, :] * fP[5, :]            # rhoe * Ue_y
 
-# @njit
+@njit
 def ConsToPrim(fU, fP, fJ=0.0):
     fP[0, :] = fU[0, :] / Mi # ng
     fP[1, :] = fU[1, :] / Mi # ni
@@ -410,7 +410,7 @@ def ConsToPrim(fU, fP, fJ=0.0):
     fP[5, :] = fU[4, :] / (phy_const.m_e * fU[1, :] / Mi )     # Ue_y
 
 
-# @njit
+@njit
 def InviscidFlux(fP, fF, tau_xy = 0., heat_flux_vec = 0.):
     fF[0, :] = fP[0, :] * VG * Mi # rho_g*v_g
     fF[1, :] = fP[1, :] * fP[2, :] * Mi # rho_i*v_i
@@ -421,7 +421,7 @@ def InviscidFlux(fP, fF, tau_xy = 0., heat_flux_vec = 0.):
     fF[4, :] = phy_const.m_e * fP[1, :] * fP[5, :] * fP[4, :]            # (rhoe * uey * uex)
 
 
-# @njit
+@njit
 def CumTrapz(y, d):
     n = y.shape[0]
     cuminteg = np.zeros(y.shape, dtype=float)
@@ -432,7 +432,7 @@ def CumTrapz(y, d):
     return cuminteg
 
 
-# @njit
+@njit
 def gradient(y, x):
     '''
     Compute the gradient of a function y(x) using a second order centered difference scheme.
@@ -445,7 +445,7 @@ def gradient(y, x):
     return dp_dz
 
 
-# @njit
+@njit
 def compute_E(fP):
 
     # TODO: This is already computed! Maybe move to the source
@@ -510,7 +510,7 @@ def compute_E(fP):
     return E
 
 
-# @njit
+@njit
 def Source(fP, fS):
 
     #############################################################
@@ -624,7 +624,7 @@ def Source(fP, fS):
     # print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
 
-# @njit
+@njit
 def heatFlux(fP, fS):
 
     #############################################################
@@ -693,7 +693,7 @@ def heatFlux(fP, fS):
     #+ phy_const.e*ni*Te*div_u  #- gradI_term*ni*Te*grdI          # Energy in Joule
 
 
-# @njit
+@njit
 def TDMA(a, b, c, d):  # Thomas algorithm for the implicit solver a = Lower Diag, b = Main Diag, c = Upper Diag, d = solution vector
     n = len(d)
     w = np.zeros(n - 1, float)
@@ -713,7 +713,7 @@ def TDMA(a, b, c, d):  # Thomas algorithm for the implicit solver a = Lower Diag
     return p
 
 
-# @njit
+@njit
 def heatFluxImplicit(fP, fDelta_t):
 
 
@@ -796,7 +796,7 @@ def heatFluxImplicit(fP, fDelta_t):
 
     return TDMA(a_lowerDiag[1:], b_mainDiag, c_upperDiag[:-1], d_solutionVector)
 
-# @njit
+@njit
 def simpson(y, x):
     """
     Simpson's rule for integration
@@ -805,7 +805,7 @@ def simpson(y, x):
     dx = x[1] - x[0]
     return dx/3 * np.sum(y[0:-1:2] + 4*y[1::2] + y[2::2])
 
-# @njit
+@njit
 def calculate_Rei(ne, Te, uey):
     """ Calculate the theoretical electron-ion collision friction using a Maxwellian distribution """
     lambda_D = ((phy_const.epsilon_0 * Te * phy_const.elementary_charge)/(ne * phy_const.elementary_charge**2))**.5
@@ -815,7 +815,7 @@ def calculate_Rei(ne, Te, uey):
     Rei_Maxwellian = 4 * (2*np.pi)**.5 * omega_pe * lambda_D * Ewave * uey / vTe**3 * np.exp(-(uey / vTe)**2)
     return Rei_Maxwellian
 
-# @njit
+@njit
 def Rei_sat(ne, Te, vix, dx, mass):
     """
     Calculate the saturated electron-ion collision friction using the empirical formula
@@ -825,7 +825,7 @@ def Rei_sat(ne, Te, vix, dx, mass):
     return phy_const.elementary_charge/(16*6**.5 * cs) * np.abs(grad_term)
 
 # Compute the Current
-# @njit
+@njit
 def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0):
     ''' Compute the discharge current using the old or the new scheme '''
 
@@ -907,7 +907,7 @@ def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0):
     return J0 * phy_const.e * A0
 
 
-# @njit
+@njit
 def SetInlet(fP_LeftColumn, fU_ghost, fP_ghost, fJ=0.0, moment=1):
     ''' Impose the left boundary conditions '''
     #TODO: change the Dirichlet BCs so that a fixed value s is achieved in the frontier x=0. So the ghost value must be s_g = 2*s - s[0], where s[0] is the left value of the bulk array. Currently only v_i is computed this way to achieve the Bohm velocity at the frontier. It is not the case for n_g and T_e.
@@ -939,7 +939,7 @@ def SetInlet(fP_LeftColumn, fU_ghost, fP_ghost, fJ=0.0, moment=1):
     fP_ghost[5] = fU_ghost[4] / (phy_const.m_e * fU_ghost[1] / Mi )     # Ue_y
 
 
-# @njit
+@njit
 def SetOutlet(fP_RightColumn, fU_ghost, fP_ghost, J=0.0):
     ''' Impose the right boundary conditions '''
     #TODO: change the Dirichlet BCs so that a fixed value s is achieved in the frontier x=0. So the ghost value must be s_g = 2*s - s[0], where s[0] is the left value of the bulk array. It is not the case for T_e.
@@ -962,7 +962,7 @@ def SetOutlet(fP_RightColumn, fU_ghost, fP_ghost, J=0.0):
 #           Functions defining our numerics              #
 ##########################################################
 # TODO: These are vector. Better allocate them
-# @njit
+@njit
 def computeMaxEigenVal_e(fP):
 
     U_Bohm = np.sqrt(phy_const.e * fP[3, :] / Mi)
@@ -970,7 +970,7 @@ def computeMaxEigenVal_e(fP):
     return np.maximum(np.abs(U_Bohm - fP[4, :]) * 2, np.abs(U_Bohm + fP[4, :]) * 2)
 
 
-# @njit
+@njit
 def computeMaxEigenVal_i(fP):
 
     U_Bohm = np.sqrt(phy_const.e * fP[3, :] / Mi)
@@ -979,7 +979,7 @@ def computeMaxEigenVal_i(fP):
     return np.maximum(np.abs(U_Bohm - fP[2, :]), np.abs(U_Bohm + fP[2, :]))
 
 
-# @njit
+@njit
 def NumericalFlux(fP, fU, fF_cell, fF_interf):
 
     # Compute the max eigenvalue
@@ -1012,7 +1012,7 @@ def NumericalFlux(fP, fU, fF_cell, fF_interf):
         fF_cell[4, 0 : NBPOINTS + 1] + fF_cell[4, 1 : NBPOINTS + 2]
     ) - 0.5 * lambda_max_e_12 * (fU[4, 1 : NBPOINTS + 2] - fU[4, 0 : NBPOINTS + 1])
 
-## @njit
+@njit
 def ComputeDelta_t(fP):
 
     x_ext  = x_center_extended # renaming for elegance
