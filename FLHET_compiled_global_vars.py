@@ -94,7 +94,7 @@ if os.path.exists(Resultsdir):
     print("Do you want to continue? (y/n)")
     answer = input()
 
-    bool_rewrite = False
+    bool_rewrite = True
     while bool_rewrite == False:
         if answer == "y":
             list_of_res_files = glob.glob(Resultsdir+"/Data/Macroscopic*.pkl")
@@ -270,11 +270,13 @@ if msp.START_FROM_INPUT:
 
     # We initialize the primitive variables
     P[0,:] = P0_INTERP(x_center)                           # Initial propellant density ng TODO
+    if (np.sum(P[0,:]) == 0.0):
+        P[0,:] = MDOT / (Mi * A0 * VG)
     P[1,:] = P1_INTERP(x_center)                           # Initial ni
     P[2,:] = P2_INTERP(x_center)                           # Initial vi
     P[3,:] = P3_INTERP(x_center)                           # Initial Te
     P[4,:] = P4_INTERP(x_center)                           # Initial Ve
-    P[5,:] = P5_INTERP(x_center)                           # Initial Ve
+    P[5,:] = P5_INTERP(x_center)                           # Initial Ve_y
 
     Jm1 = J_INIT
     J   = J_INIT
@@ -809,9 +811,9 @@ def simpson(y, x):
 def calculate_Rei(ne, Te, uey):
     """ Calculate the theoretical electron-ion collision friction using a Maxwellian distribution """
     lambda_D = ((phy_const.epsilon_0 * Te * phy_const.elementary_charge)/(ne * phy_const.elementary_charge**2))**.5
-    omega_pe = (ne * phy_const.elementary_charge)/(phy_const.electron_mass * phy_const.epsilon_0)**.5
+    omega_pe = (ne * phy_const.elementary_charge)/(phy_const.m_e * phy_const.epsilon_0)**.5
     Ewave = 1.5 * ne * Te * phy_const.elementary_charge / 432
-    vTe = (2 * Te * phy_const.elementary_charge / phy_const.electron_mass)**.5
+    vTe = (2 * Te * phy_const.elementary_charge / phy_const.m_e )**.5
     Rei_Maxwellian = 4 * (2*np.pi)**.5 * omega_pe * lambda_D * Ewave * uey / vTe**3 * np.exp(-(uey / vTe)**2)
     return Rei_Maxwellian
 
@@ -826,7 +828,7 @@ def Rei_sat(ne, Te, vix, dx, mass):
 
 # Compute the Current
 @njit
-def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0):
+def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0, n_iter = 0):
     ''' Compute the discharge current using the old or the new scheme '''
 
     #############################################################
@@ -873,7 +875,7 @@ def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0):
         nu_m = ng * KEL + alpha_B * wce + nu_ew
 
         div_p = gradient(ni*Te, x_center)
-        div_mnuxuy = gradient(me*ni*ve*Ue_y, x_center)
+        div_mnuxuy = gradient(me*ni*ve*Ue_y, x_center)*0
         div_uey = gradient(Ue_y, x_center)
 
         if np.sum(n_old_U_ey_old) == 0.0:
@@ -896,15 +898,21 @@ def compute_I(fP, fV, old_curr = True, n_old_U_ey_old = 0.0):
         value_simpson_1 = simpson(Term_1, np.append(x_center, x_center[-1] + x_center[1] - x_center[0]))
         top = fV + value_simpson_1
 
-        Term_2 = Barr / ni - phy_const.electron_mass * div_uey / (phy_const.e * ni)
+        Term_2 = Barr / ni - phy_const.m_e * div_uey / (phy_const.e * ni)
         # value_simpson_2 = integrate.simpson(Term_2 , x=x_center) # TODO: check if this is correct with the other simpson
         Term_2 = np.append(Term_2, Term_2[-1] + Term_2[-1] - Term_2[-2])
 
         value_simpson_2 = simpson(Term_2, np.append(x_center, x_center[-1] + x_center[1] - x_center[0]))
         bottom = phy_const.e * A0 * Rext + value_simpson_2
-        J0 = top / bottom  # Discharge current density
+        if (abs(bottom) < 1e-25):
+            print("bottom is too small", bottom, "top", top, "n_iter:", n_iter)
 
-    return J0 * phy_const.e * A0
+        if (n_iter == 1000):
+            print("top", top, "bottom", bottom)
+        J0 = top / bottom  # Discharge current density
+        J0 = J0 * phy_const.e * A0
+    return J0
+
 
 
 @njit
@@ -1046,7 +1054,7 @@ if TIMESCHEME == "Forward Euler":
     ##########################################################################################
     print("Using Forward Euler scheme")
     n_old_U_ey_old = np.copy(P[1,:] * P[5,:])
-    J = compute_I(P, V, False, n_old_U_ey_old)
+    J = compute_I(P, V, False, n_old_U_ey_old, iter)
 
     while time < TIMEFINAL:
 
@@ -1149,9 +1157,11 @@ if TIMESCHEME == "Forward Euler":
         # U[3,:] = np.where(U[3,:] >= 0., U[3,:], 0.)
 
         # Compute the current
-        J = compute_I(P, V, False, n_old_U_ey_old)
+        J = compute_I(P, V, False, n_old_U_ey_old, iter)
         # print(f"current: {J:.3f} A")
         # Compute the primitive vars for next step
+        n_old_U_ey_old = np.copy(P[1, :] * P[5, :])
+
         ConsToPrim(U, P, J)
         # print("~~~ P ~~~")
         # print(sum(P[0, :]), np.shape(P))
@@ -1161,7 +1171,6 @@ if TIMESCHEME == "Forward Euler":
         # print(sum(P[4, :]), np.shape(P))
         # print("~~~~~~~~~~")
 
-        n_old_U_ey_old = np.copy(P[1, :] * P[5, :])
 
         P[3, :] = np.where(P[3, :] >= T_min, P[3, :], T_min)
         P_LeftGhost[3] = T_min if P_LeftGhost[3] <= T_min else P_LeftGhost[3]
