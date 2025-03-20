@@ -1,5 +1,7 @@
 import numpy as np
 import configparser
+
+from numpy.distutils.fcompiler import str2bool
 from scipy import constants as phy_const
 import math
 import os
@@ -8,6 +10,9 @@ import pandas as pd
 
 class SimuParameters():
     """this class "pack" the plasma parameters to be used for normalisation"""
+
+    def str2bool(v):
+        return v.lower() in ("yes", "true", "t", "1")
 
     def __init__(self,
                  fconfigfile
@@ -68,8 +73,11 @@ class SimuParameters():
         print(MagneticFieldConfig["Type"] + " Magnetic Field")
         self.BTYPE = MagneticFieldConfig["Type"]
         self.BMAX = float(MagneticFieldConfig["Max B-field"])  # Max Mag field
-        self.B0 = float(MagneticFieldConfig["B-field at 0"])  # Mag field at x=0
-        self.BLX = float(MagneticFieldConfig["B-field at LX"])  # Mag field at x=LX
+        try:
+            self.B0 = float(MagneticFieldConfig["B-field at 0"])  # Mag field at x=0
+            self.BLX = float(MagneticFieldConfig["B-field at LX"])  # Mag field at x=LX
+        except:
+            print("Undefined magnetic field at x=0 and x=LX. Default values are used.")
         self.LB1 = float(MagneticFieldConfig["Length B-field 1"])  # Length for magnetic field
         self.LB2 = float(MagneticFieldConfig["Length B-field 2"])  # Length for magnetic field
 
@@ -80,10 +88,11 @@ class SimuParameters():
         )
         if self.boolSizImposed:
             print("The ionization source term is imposed as specified in T.Charoy's thesis, section 2.2.2.")
-        self.SIZMAX = float(IonizationConfig["Maximum S_iz value"])  # Max Mag field
-        self.LSIZ1 = float(IonizationConfig["Position of 1st S_iz zero"])  # Mag field at x=0
-        self.LSIZ2 = float(IonizationConfig["Position of 2nd S_iz zero"])  # Mag field at x=LX
-        assert (self.LSIZ2 >= self.LSIZ1)
+
+            self.SIZMAX = float(IonizationConfig["Maximum S_iz value"])  # Max Mag field
+            self.LSIZ1 = float(IonizationConfig["Position of 1st S_iz zero"])  # Mag field at x=0
+            self.LSIZ2 = float(IonizationConfig["Position of 2nd S_iz zero"])  # Mag field at x=LX
+            assert (self.LSIZ2 >= self.LSIZ1)
         try:
             self.Eion = float(IonizationConfig["ionization energy"])
             self.gamma_i = float(IonizationConfig["coefficient gamma_i"])
@@ -109,10 +118,11 @@ class SimuParameters():
         assert ((self.wall_inter_type == "Default") | (self.wall_inter_type == "None"))
 
         TestCaseConfig = config["Test Case"]
-        self.thomas_BM_testcase = bool(TestCaseConfig["Thomas BM test case"])
-        self.empirical_term = bool(TestCaseConfig["Empirical term"])
-        self.empirical_term_path = TestCaseConfig["Empirical term path"]
-
+        self.thomas_BM_testcase = str2bool(TestCaseConfig["Thomas BM test case"])
+        self.empirical_term = str2bool(TestCaseConfig["Empirical term"])
+        if self.empirical_term:
+            self.empirical_term_path = TestCaseConfig["Empirical term path"]
+            print("Empirical term: ", self.empirical_term, self.empirical_term_path)
         ##########################################################
         #           NUMERICAL PARAMETERS
         ##########################################################
