@@ -927,8 +927,9 @@ def SetInlet(fP_LeftColumn, fU_ghost, fP_ghost, fJ=0.0, moment=1):
     fU_ghost[1] = fP_LC[1] * Mi
     fU_ghost[2] = -2.0 * fP_LC[1] * U_Bohm* Mi - fP_LC[1] * fP_LC[2] * Mi     # so that 0.5*(U_ghost[2] + U_LC[2]) = - u_B * U_LC[1] 
     U_ey_In = fP_LC[5]
-    Energy_Ghost =  0.5 * phy_const.m_e * fP_LC[1] * fP_LC[5]**2 + 3.0 / 2.0 * fP_LC[1] * phy_const.e * Te_Cath #(2*fTe_cath - fP_In[3])
-    fU_ghost[3] = Energy_Ghost
+    # Energy_Ghost =  0.5 * phy_const.m_e * fP_LC[1] * fP_LC[5]**2 + 3.0 / 2.0 * fP_LC[1] * phy_const.e * Te_Cath #(2*fTe_cath - fP_In[3])
+    # fU_ghost[3] = Energy_Ghost
+    fU_ghost[3] = 0.5 * phy_const.m_e * fP_LC[1] * fP_LC[5]**2 + 3.0 / 2.0 * fP_LC[1] * phy_const.e * fP_LeftColumn[3] #(2*fTe_cath - fP_In[3])
     fU_ghost[4] = phy_const.m_e * fP_LC[1] * fP_LC[5]
 
     fP_ghost[0] = fU_ghost[0] / Mi # ng
