@@ -77,7 +77,7 @@ class SimuParameters():
 
         # Ionization source term configuration
         IonizationConfig = config["Ionization configuration"]
-        self.boolSizImposed = bool(
+        self.boolSizImposed = eval(
             config.getboolean("Ionization configuration", "source is imposed", fallback=False)
         )
         if self.boolSizImposed:

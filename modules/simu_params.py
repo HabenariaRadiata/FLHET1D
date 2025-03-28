@@ -6,12 +6,10 @@ import os
 import pandas as pd
 
 
-class SimuParameters():
+class SimuParameters:
     """this class "pack" the plasma parameters to be used for normalisation"""
 
-    def __init__(self,
-                 fconfigfile
-                 ):
+    def __init__(self, fconfigfile):
 
         self.configinipath = fconfigfile
 
@@ -22,22 +20,36 @@ class SimuParameters():
 
         self.VG = float(physicalParameters["Gas velocity"])  # Gas velocity
         self.Mi = float(physicalParameters["Ion Mass"]) * phy_const.m_u  # Ion Mass
-        self.R1 = float(physicalParameters["Inner radius"])  # Inner radius of the thruster
-        self.R2 = float(physicalParameters["Outer radius"])  # Outer radius of the thruster
-        self.A0 = np.pi * (self.R2 ** 2 - self.R1 ** 2)  # Area of the thruster
-        self.LX = float(physicalParameters["Length of axis"])  # length of Axis of the simulation
+        self.R1 = float(
+            physicalParameters["Inner radius"]
+        )  # Inner radius of the thruster
+        self.R2 = float(
+            physicalParameters["Outer radius"]
+        )  # Outer radius of the thruster
+        self.A0 = np.pi * (self.R2**2 - self.R1**2)  # Area of the thruster
+        self.LX = float(
+            physicalParameters["Length of axis"]
+        )  # length of Axis of the simulation
         self.LTHR = float(
             physicalParameters["Length of thruster"]
         )  # length of thruster (position of B_max)
 
-        self.MDOT = float(physicalParameters["Mass flow"])  # Mass flow rate of propellant
+        self.MDOT = float(
+            physicalParameters["Mass flow"]
+        )  # Mass flow rate of propellant
         self.Te_Cath = float(
             physicalParameters["e- Temperature Cathode"]
         )  # Electron temperature at the cathode
-        self.TE0 = float(physicalParameters["Initial e- temperature"])  # Initial electron temperature at the cathode.
-        self.NI0 = float(physicalParameters["Initial plasma density"])  # Initial plasma density.
+        self.TE0 = float(
+            physicalParameters["Initial e- temperature"]
+        )  # Initial electron temperature at the cathode.
+        self.NI0 = float(
+            physicalParameters["Initial plasma density"]
+        )  # Initial plasma density.
         # NG0 = float(physicalParameters["Initial neutrals density"]) # Initial neutrals density. No need for this parameter it is processed to have be coehrent with MDOT, AO and VG.
-        self.Rext = float(physicalParameters["Ballast resistor"])  # Resistor of the ballast
+        self.Rext = float(
+            physicalParameters["Ballast resistor"]
+        )  # Resistor of the ballast
         self.V0 = float(physicalParameters["Voltage"])  # Potential difference
 
         self.Circuit = bool(
@@ -49,17 +61,23 @@ class SimuParameters():
             self.C = float(physicalParameters["C"])
 
         self.boolPressureDiv = bool(
-            config.getboolean("Physical Parameters", "pressure div in energy equation", fallback=False)
+            config.getboolean(
+                "Physical Parameters", "pressure div in energy equation", fallback=False
+            )
         )  # is dp/dx * u_e  accounted in the energy equation
 
         self.HEATFLUX = bool(
-            config.getboolean("Physical Parameters", "Electron heat flux", fallback=False)
+            config.getboolean(
+                "Physical Parameters", "Electron heat flux", fallback=False
+            )
         )
 
         # Anomalous Transport
         anomParams = config["Anomalous Transport"]
         self.boolInputAnomNu = bool(
-            config.getboolean("Anomalous Transport", "Input anomalous nu", fallback=False)
+            config.getboolean(
+                "Anomalous Transport", "Input anomalous nu", fallback=False
+            )
         )
 
         # Magnetic field configuration
@@ -70,30 +88,45 @@ class SimuParameters():
         self.BMAX = float(MagneticFieldConfig["Max B-field"])  # Max Mag field
         self.B0 = float(MagneticFieldConfig["B-field at 0"])  # Mag field at x=0
         self.BLX = float(MagneticFieldConfig["B-field at LX"])  # Mag field at x=LX
-        self.LB1 = float(MagneticFieldConfig["Length B-field 1"])  # Length for magnetic field
-        self.LB2 = float(MagneticFieldConfig["Length B-field 2"])  # Length for magnetic field
+        self.LB1 = float(
+            MagneticFieldConfig["Length B-field 1"]
+        )  # Length for magnetic field
+        self.LB2 = float(
+            MagneticFieldConfig["Length B-field 2"]
+        )  # Length for magnetic field
 
         # Ionization source term configuration
         IonizationConfig = config["Ionization configuration"]
         self.boolSizImposed = bool(
-            config.getboolean("Ionization configuration", "source is imposed", fallback=False)
+            config.getboolean(
+                "Ionization configuration", "source is imposed", fallback=False
+            )
         )
         if self.boolSizImposed:
-            print("The ionization source term is imposed as specified in T.Charoy's thesis, section 2.2.2.")
+            print(
+                "The ionization source term is imposed as specified in T.Charoy's thesis, section 2.2.2."
+            )
         self.SIZMAX = float(IonizationConfig["Maximum S_iz value"])  # Max Mag field
-        self.LSIZ1 = float(IonizationConfig["Position of 1st S_iz zero"])  # Mag field at x=0
-        self.LSIZ2 = float(IonizationConfig["Position of 2nd S_iz zero"])  # Mag field at x=LX
-        assert (self.LSIZ2 >= self.LSIZ1)
+        self.LSIZ1 = float(
+            IonizationConfig["Position of 1st S_iz zero"]
+        )  # Mag field at x=0
+        self.LSIZ2 = float(
+            IonizationConfig["Position of 2nd S_iz zero"]
+        )  # Mag field at x=LX
+        assert self.LSIZ2 >= self.LSIZ1
         try:
             self.Eion = float(IonizationConfig["ionization energy"])
             self.gamma_i = float(IonizationConfig["coefficient gamma_i"])
             self.Te_inj = float(IonizationConfig["injection e- temperature"])
         except KeyError:
             print(
-                "\tUserWarning: the config file " + fconfigfile + " does not specify all three of the parameters 'ionization energy', 'coefficient gamma_i' and 'injection e- temperature'. It may be a config file suited for an older version of the code. Default values for these values are used.")
+                "\tUserWarning: the config file "
+                + fconfigfile
+                + " does not specify all three of the parameters 'ionization energy', 'coefficient gamma_i' and 'injection e- temperature'. It may be a config file suited for an older version of the code. Default values for these values are used."
+            )
             self.Eion = 12.1
             self.gamma_i = 3.0
-            self.Te_inj = 10.
+            self.Te_inj = 10.0
 
         # Collisions parameters
         CollisionsConfig = config["Collisions"]
@@ -105,12 +138,27 @@ class SimuParameters():
         # Wall interactions
         WallInteractionConfig = config["Wall interactions"]
         self.wall_inter_type = WallInteractionConfig["Type"]
-        self.ESTAR = float(WallInteractionConfig["Crossover energy"])  # Crossover energy
-        assert ((self.wall_inter_type == "Default") | (self.wall_inter_type == "None"))
+        self.ESTAR = float(
+            WallInteractionConfig["Crossover energy"]
+        )  # Crossover energy
+        assert (self.wall_inter_type == "Default") | (self.wall_inter_type == "None")
 
         TestCaseConfig = config["Test Case"]
-        self.thomas_BM_testcase = bool(TestCaseConfig["Thomas BM test case"])
-        self.empirical_term = bool(TestCaseConfig["Empirical term"])
+        self.thomas_BM_testcase = bool(
+            config.getboolean("Test Case", "Thomas BM test case", fallback=False)
+        )
+        print(
+            TestCaseConfig["Empirical term"],
+            bool(TestCaseConfig["Empirical term"]),
+            TestCaseConfig["Thomas BM test case"],
+        )
+        self.empirical_term = bool(
+            config.getboolean("Test Case", "Empirical term", fallback=False)
+        )
+        if self.empirical_term == True:
+            print("Empirical term is True")
+        if self.empirical_term == False:
+            print("Empirical term is False")
         self.empirical_term_path = TestCaseConfig["Empirical term path"]
 
         ##########################################################
@@ -120,7 +168,9 @@ class SimuParameters():
 
         self.NBPOINTS_INIT = int(NumericsConfig["Number of points"])  # Number of cells
         try:
-            self.SAVERATE = int(NumericsConfig["Save rate"])  # Rate at which we store the data
+            self.SAVERATE = int(
+                NumericsConfig["Save rate"]
+            )  # Rate at which we store the data
         except KeyError:
             self.SAVERATE = -1
         self.CFL = float(NumericsConfig["CFL"])  # Nondimensional size of the time step
@@ -128,18 +178,26 @@ class SimuParameters():
         self.Results = NumericsConfig["Result dir"]  # Name of result directory
         self.TIMESCHEME = NumericsConfig["Time integration"]  # Time integration scheme
         self.IMPlICIT = bool(
-            config.getboolean("Numerical Parameteres", "Implicit heat flux",
-                              fallback=False))  # Time integration scheme for heat flux equation
+            config.getboolean(
+                "Numerical Parameteres", "Implicit heat flux", fallback=False
+            )
+        )  # Time integration scheme for heat flux equation
         self.MESHREFINEMENT = bool(
-            config.getboolean("Numerical Parameteres", "Mesh refinement", fallback=False))
+            config.getboolean(
+                "Numerical Parameteres", "Mesh refinement", fallback=False
+            )
+        )
         if self.MESHREFINEMENT:
             self.MESHLEVELS = int(NumericsConfig["Mesh levels"])
             self.REFINEMENTLENGTH = float(NumericsConfig["Refinement length"])
         else:
             self.MESHLEVELS = 0
-            self.REFINEMENTLENGTH = 0.
+            self.REFINEMENTLENGTH = 0.0
         self.START_FROM_INPUT = bool(
-            config.getboolean("Numerical Parameteres", "Start from input profiles", fallback=False))
+            config.getboolean(
+                "Numerical Parameteres", "Start from input profiles", fallback=False
+            )
+        )
         if self.START_FROM_INPUT:
             self.INPUT_DIR = NumericsConfig["Input profiles directory"] + "Data/"
 
@@ -181,26 +239,34 @@ class SimuParameters():
         anomParams = config["Anomalous Transport"]
         inputfil = anomParams["Anomalous nu file"]
 
-        return pd.read_csv(inputfil, sep='\t', header=0)
+        return pd.read_csv(inputfil, sep="\t", header=0)
 
     def return_tiled_domain(self):
 
-        x_mesh = np.linspace(0, self.LX, self.NBPOINTS_INIT + 1)  # Mesh in the interface
+        x_mesh = np.linspace(
+            0, self.LX, self.NBPOINTS_INIT + 1
+        )  # Mesh in the interface
         if self.MESHREFINEMENT and self.MESHLEVELS > 1:
             # get the point below the refinement length
             Dx_notRefined = x_mesh[1]
             # First level
             i_refinement = int(np.floor(self.REFINEMENTLENGTH / Dx_notRefined))
             mesh_level_im1 = np.linspace(0, x_mesh[i_refinement], i_refinement * 2 + 1)
-            mesh_refinedim1 = np.concatenate((mesh_level_im1[:-1], x_mesh[i_refinement:]))
+            mesh_refinedim1 = np.concatenate(
+                (mesh_level_im1[:-1], x_mesh[i_refinement:])
+            )
             # plt.plot(x_mesh, np.zeros_like(x_mesh), linestyle='None', marker='o', markersize=2)
             # plt.plot(mesh_refinedim1, np.ones_like(mesh_refinedim1), linestyle='None', marker='o', markersize=2)
 
             # Secondand rest of levels level
             for i_level in range(2, self.MESHLEVELS + 1):
                 i_refinement_level = int((np.shape(mesh_level_im1)[0] - 1) / 2)
-                mesh_level_i = np.linspace(0, mesh_level_im1[i_refinement_level], i_refinement_level * 2 + 1)
-                mesh_refined_level_i = np.concatenate((mesh_level_i[:-1], mesh_refinedim1[i_refinement_level:]))
+                mesh_level_i = np.linspace(
+                    0, mesh_level_im1[i_refinement_level], i_refinement_level * 2 + 1
+                )
+                mesh_refined_level_i = np.concatenate(
+                    (mesh_level_i[:-1], mesh_refinedim1[i_refinement_level:])
+                )
 
                 mesh_level_im1 = mesh_level_i
                 mesh_refinedim1 = mesh_refined_level_i
@@ -216,4 +282,3 @@ class SimuParameters():
         Delta_x_extended = np.append(Delta_x_extended, Delta_x[-1])
 
         return x_mesh, x_center, Delta_x, x_center_extended, Delta_x_extended
-

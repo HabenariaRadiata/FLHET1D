@@ -919,7 +919,7 @@ def main(fconfigfile):
     # # TEST
     # We initialize the primitive variables
     
-    with open('/home/petronio/Nextcloud_sync/code/FLHET1D/alex_test_azim_motion/Data/MacroscopicVars_000038.pkl', 'rb') as f:
+    with open('./Data/MacroscopicVars_000038.pkl', 'rb') as f:
             [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)
     # with open('./Results/testInertia_Initialization_ConstantCurrent_2/Data/MacroscopicVars_000009.pkl', 'rb') as f:
     #         [t_init, P_init, U_init, P_Inlet_init, P_Outlet_init, J_init, V_init, B_init, x_center_init] = pickle.load(f)

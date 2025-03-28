@@ -32,6 +32,7 @@ from modules.simu_params import SimuParameters
 #       ui = -u_bohm
 # Outlet:
 #       Te = Te_Cath
+#       ve = 0  (azimuthal velocity of electrons)
 #
 # The user can change the PHYSICAL PARAMETERS
 # or the NUMERICAL PARAMETERS
