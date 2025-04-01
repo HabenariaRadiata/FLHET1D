@@ -414,17 +414,29 @@ wce     = phy_const.e*B/m              # electron cyclotron frequency
 #       Compute the rates   #
 #############################
 def compute_Kel(Te):
-    # Xenon
-    a =  6.25621116e-14
-    b = -4.30874715e+00
-    c = -1.45152836e+01
-    d = -1.49229954e+01
-    e = -5.68651763e+00
-    f = 3.36357165e-01
+    """This function calculates the ionization rate"""
+    # Polynomial coefficients
+    c0 = -3.04474930e+01
+    c1 = 1.89683694e+00
+    c2 = -6.63807968e-01
+    c3 = 9.37924042e-03
+    c4 = 2.19404998e-02
+    c5 = -2.27126387e-03
 
-    t = (1/Te)
+    # Compute the natural logarithm of Te
+    log_Te = np.log(Te)
 
-    return 16./3.*a*t**f*np.exp(-b*t+ c*t**2 - d*t**3. + e*t**4)
+    # Manually evaluate the polynomial using Horner's method (unrolled loop)
+    result = c5
+    result = result * log_Te + c4
+    result = result * log_Te + c3
+    result = result * log_Te + c2
+    result = result * log_Te + c1
+    result = result * log_Te + c0
+
+    # Return the exponential of the polynomial result
+    return np.exp(result)
+
 Kel = compute_Kel(Te)  # Electron - neutral  collision rate     TODO: Replace by good one
 
 def compute_Kiz(Te):
