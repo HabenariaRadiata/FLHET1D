@@ -82,7 +82,7 @@ if not os.path.exists(ResultsFigs):
 files       = glob.glob(ResultsData + "/*.pkl")
 filesSorted = sorted(files, key = lambda x: os.path.getmtime(x), reverse=True)
 files.sort(key=os.path.getmtime)
-files = files[-1:] ## Taking last 10 iterations
+files = files[:] ## Taking last 10 iterations
 
 
 Current = np.zeros(np.shape(files)[0])
@@ -198,21 +198,24 @@ for i_save, file in enumerate(files):
 #####################################
 
 f, ax = plt.subplots(figsize=(8,3))
-
 ax.plot(time/1e-3, Current)
 ax.set_xlabel(r'$t$ [ms]', fontsize=18, weight = 'bold')
 ax.set_ylabel(r'Current [A]', fontsize=18)
 ax_V=ax.twinx()
 ax_V.plot(time/1e-3, Voltage,'r')
+ax_V.plot(time/1e-3, Voltage - Current * 10,'darkred')
 ax_V.set_ylabel(r'Voltage [V]', fontsize=18)
 ax.grid(True)
 plt.tight_layout()
 plt.savefig(ResultsFigs+"/Current.pdf", bbox_inches='tight')
     
-for i_save, file in enumerate(files):
+for i_save, file in enumerate(files[-1:]):
 
-    print("Preparing plot for i = ", i_save)
+    # print("Preparing plot for i = ", i_save)
     #
+    file_number = files.index(file)
+    print(f"Processing file number: {file_number}")
+
     with open(file, 'rb') as f:
         [t, P, U, P_Inlet, P_Outlet, J, V, B, x_center] = pickle.load(f)
 
@@ -385,9 +388,9 @@ for i_save, file in enumerate(files):
         ax[6].plot(time/1e-3, Current)
         ax[6].set_ylabel(r'Current [A]', fontsize=18)
         ax[6].set_xlabel(r'time [ms]', fontsize=18)
-        ax[6].plot(time[i_save]/1e-3, Current[i_save], 'ro', markersize=10)
+        ax[6].plot(time[file_number]/1e-3, Current[file_number], 'ro', markersize=10)
         ax[6].grid(True)
-        ax[6].set_xlim([0,1.])
+        ax[6].set_xlim([0,time[-1]/1e-3])
 
         for axis in ax:
             axis.grid(True)
@@ -471,11 +474,11 @@ for index in range(10, NBPOINTS - 9):
     alpha_B_smooth[index] = np.mean(alpha_B[index-10:index+10])
 alpha_B = alpha_B_smooth
 
-nu_m   = ng*Kel + alpha_B*wce + nu_ew                          # Electron momentum - transfer collision frequency
+nu_m   = ng*Kel + alpha_B*wce                          # Electron momentum - transfer collision frequency
 
 pd = pd.DataFrame({'xx_center': x_center, 'temperature': P[3,:], 'ng': P[0,:], 'ni': P[1,:], 'ui': P[2,:], 've': P[4,:], 'E': E, 'phi': phi, 'B': B, 'nu_m': nu_m, 'Siz': ng * ni * Kiz})
 
-pd.to_csv(ResultsFigs+"/values_fluid_unstat.csv", index=False)
+pd.to_csv(Results+"/values_fluid_unstat.csv", index=False)
 
 # os.system("ffmpeg -r 10 -i "+ResultsFigs+"/MacroscopicVars_New_%d.png -vcodec mpeg4 -y -vb 20M "+ResultsFigs+"Evolution.mp4")
 
