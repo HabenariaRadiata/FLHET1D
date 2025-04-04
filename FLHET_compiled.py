@@ -270,14 +270,18 @@ def Source(P, S):
         return K0*np.exp(-epsilon/Te)*(np.log(1 + A*Te + B*Te**2))**C
     
     def computeEpsilonLoss(Te):
-        def computeKprocess(K0, epsilon, A, B, C):
-            return K0*np.exp(-epsilon/Te)*(np.log(1 + A*Te + B*Te**2))**C
+        def computeKprocess(Te, K0, epsilon, A, B, C):
+            arg = 1 + A * Te + B * Te**2
+            arg = np.maximum(arg, 1.0)  # Ensure all values are >= 1
+            # if np.any(arg <= 1):
+            #     arg = 1.0
+            return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
         
-        K_iz  = computeKprocess(1.18122959e-13, 12.13, 1.29330521e-01, 1.00068880e-02, 6.97445869e-01)
-        K_ex1 = computeKprocess(2.37016128e-14, 8.315, 7.99682247e-02, -5.91358673e-04, 4.51997276e-01)
-        K_ex2 = computeKprocess(9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
-        K_ex3 = computeKprocess(1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
-        K_ex4 = computeKprocess(7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
+        K_iz  = computeKprocess(Te, 1.18122959e-13, 12.13, 1.29330521e-01, 1.00068880e-02, 6.97445869e-01)
+        K_ex1 = computeKprocess(Te, 2.37016128e-14, 8.315, 7.99682247e-02, -5.91358673e-04, 4.51997276e-01)
+        K_ex2 = computeKprocess(Te, 9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
+        K_ex3 = computeKprocess(Te, 1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
+        K_ex4 = computeKprocess(Te, 7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
 
         return 12.13 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70)/K_iz + 3*m/M*compute_Kel(Te)*Te/K_iz
 
