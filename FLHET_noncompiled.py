@@ -6,7 +6,6 @@ import pandas as pd
 import pickle
 import configparser
 import sys
-from numba import njit
 import time as ttime
 
 #########################################################
@@ -41,7 +40,8 @@ import time as ttime
 
 tttime_start = ttime.time()
 
-configFile = sys.argv[1]
+# configFile = sys.argv[1]
+configFile = "Results_SPT_1/config_modif_cp_10.ini"
 config = configparser.ConfigParser()
 config.read(configFile)
 
@@ -333,7 +333,15 @@ def Source(P, S):
 
     def computeEpsilonLoss(Te):
         def computeKprocess(K0, epsilon, A, B, C):
-            return K0 * np.exp(-epsilon / Te) * (np.log(1 + A * Te + B * Te**2)) ** C
+            arg = 1 + A * Te + B * Te**2
+            if np.any(arg <= 1):
+                arg = 1.0
+            if (np.any(np.isnan( K0 * np.exp(-epsilon / Te) * (np.log(arg) ** C)))):
+                print("NaN encountered in computeKprocess:", K0, epsilon, A, B, C)
+                print("Te value:", Te)
+                print("Corresponding log argument:", arg)
+                print("Corresponding log term:", np.log(arg))
+            return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
 
         K_iz = computeKprocess(
             1.18122959e-13, 12.13, 1.29330521e-01, 1.00068880e-02, 6.97445869e-01
@@ -442,6 +450,28 @@ def Source(P, S):
         - (phy_const.e / (mu_eff[:] * M)) * ni[:] * ve[:]
         - nu_iw[:] * ni[:] * ui[:]
     ) * M  # Momentum
+    if np.any(np.isnan(ng)):
+        print("ng contains NaN values:", ng)
+    if np.any(np.isnan(ni)):
+        print("ni contains NaN values:", ni)
+    if np.any(np.isnan(ui)):
+        print("ui contains NaN values:", ui)
+    if np.any(np.isnan(Te)):
+        print("Te contains NaN values:", Te)
+    if np.any(np.isnan(ve)):
+        print("ve contains NaN values:", ve)
+    if np.any(np.isnan(nu_iw)):
+        print("nu_iw contains NaN values:", nu_iw)
+    if np.any(np.isnan(nu_ew)):
+        print("nu_ew contains NaN values:", nu_ew)
+    if np.any(np.isnan(Kiz)):
+        print("Kiz contains NaN values:", Kiz)
+    if np.any(np.isnan(mu_eff)):
+        print("mu_eff contains NaN values:", mu_eff)
+    if np.any(np.isnan(epsilonLoss)):
+        print("epsilonLoss contains NaN values:", epsilonLoss)
+    if np.any(np.isnan(div_p)):
+        print("div_p contains NaN values:", div_p)
     S[3, :] = (
         -ng[:] * ni[:] * Kiz[:] * epsilonLoss[:] * phy_const.e
         - nu_ew[:] * ni[:] * Ew * phy_const.e
@@ -814,6 +844,9 @@ if TIMESCHEME == "TVDRK3":
             F_interf,
         )
 
+        if (np.any(np.isnan(P))):
+            print("step 1, P contains NaN values:", P)
+
         # Compute the source in the center of the cell
         Source(P, S)
 
@@ -859,10 +892,16 @@ if TIMESCHEME == "TVDRK3":
             F_cell,
             F_interf,
         )
-
+        if (np.any(np.isnan(P))):
+            print("step 2, P contains NaN values:", P)
         # Compute the source in the center of the cell
         Source(P, S)
 
+        if (np.any(np.isnan(P))):
+            print("step 2 bis, P contains NaN values:", P)
+        if (np.any(np.isnan(S))):
+            print("step 2, S contains NaN values:", S)
+            sys.exit(1)
         # Update the solution
         U[:, :] = (
             0.75 * U_1[:, :]
@@ -876,11 +915,22 @@ if TIMESCHEME == "TVDRK3":
             )
         )
 
+        if (np.any(np.isnan(U))):
+            print("step 2, U contains NaN values:", U)
+
         # Compute the current
         J = compute_I(P, V)
+        if (np.any(np.isnan(J))):
+            print("step 2, J contains NaN values:", J)
 
         # Compute the primitive vars for next step
         ConsToPrim(U, P, J)
+        if (np.any(np.isnan(P))):
+            print("step 2.5, P contains NaN values:", P)
+        if (np.any(np.isnan(U))):
+            print("step 2.5, U contains NaN values:", U)
+        if (np.any(np.isnan(J))):
+            print("step 2.5, J contains NaN values:", J)
 
         # Compute RLC Circuit
         if Circuit:
@@ -898,8 +948,14 @@ if TIMESCHEME == "TVDRK3":
         SetInlet(P[:, 0], U_Inlet, P_Inlet, J, 3)
         SetOutlet(P[:, -1], U_Outlet, P_Outlet, J)
 
+        if (np.any(np.isnan(np.concatenate([P_Inlet, P, P_Outlet], axis=1)))):
+            print("step before, Pconc contains NaN values:", np.concatenate([P_Inlet, P, P_Outlet], axis=1))
+
         # Compute the Fluxes in the center of the cell
         InviscidFlux(np.concatenate([P_Inlet, P, P_Outlet], axis=1), F_cell)
+
+        if (np.any(np.isnan(F_cell))):
+            print("step before, F_cell contains NaN values:", F_cell)
 
         # Compute the Numerical at the interfaces
         NumericalFlux(
@@ -908,6 +964,9 @@ if TIMESCHEME == "TVDRK3":
             F_cell,
             F_interf,
         )
+
+        if (np.any(np.isnan(P))):
+            print("step 3, P contains NaN values:", P)
         # Compute the source in the center of the cell
         Source(P, S)
 

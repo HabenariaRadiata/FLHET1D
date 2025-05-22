@@ -7,12 +7,12 @@ generate_config_and_run() {
     local indiceX=$1
     echo $indiceX
     
-    debit=$(awk "BEGIN { printf \"%.6f\", $indiceX / 3. }")
-    xx=$(awk "BEGIN { printf \"%.6f\", $debit * 1.e-6 }")
+    debit=$(awk "BEGIN { printf \"%.7f\", $indiceX / 3. }")
+    xx=$(awk "BEGIN { printf \"%.7f\", $debit * 1.e-6 }")
     # coeff = 0.0095047 * xx**3 -0.18111132 * xx**2 + 1.16961328 *xx -1.65495335
-    coeff=$(awk "BEGIN { printf \"%.6f\", 0.0095047 * $debit^3 - 0.18111132 * $debit^2 + 1.16961328 * $debit - 1.65495335 }")
+    coeff=$(awk "BEGIN { printf \"%.7f\", 0.0095047 * $debit^3 - 0.18111132 * $debit^2 + 1.16961328 * $debit - 1.65495335 }")
     # echo "coeff = $coeff"
-    yy=$(awk "BEGIN { printf \"%.6f\", 250 + $coeff * $debit * 10. }")
+    yy=$(awk "BEGIN { printf \"%.7f\", 250 + $coeff * $debit * 10. }")
 
     # Define the output filename for each iteration
     out_filename="Results_SPT_1/config_modif_cp_${indiceX}.ini"

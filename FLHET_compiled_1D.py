@@ -550,7 +550,7 @@ def ConsToPrim(fU, fP, fJ=0.0):
     fP[5, :] = fU[4, :] / (phy_const.m_e * fU[1, :] / Mi)  # Ue_y
 
 
-# @njit
+@njit
 def InviscidFlux(fP, fF, tau_xy=0.0, heat_flux_vec=0.0):
     """
     Compute the inviscid flux.
