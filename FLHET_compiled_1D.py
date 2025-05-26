@@ -250,7 +250,7 @@ if empirical_term:
         empirical_term_interp_y = np.interp(
             x_center, empirical_term[:, 0] / 100, empirical_term[:, 1]
         )
-        print("Empirical term y loaded.")
+        print("Empirical term y loaded.", len(empirical_term_interp_y))
         empirical_term_interp_x = np.interp(
             x_center, empirical_term[:, 0] / 100, empirical_term[:, 2]
         )
@@ -260,6 +260,12 @@ if empirical_term:
         )
         tau_xy = linear_extrapolation_multi(tau_xy_temp, 2)
         print("tau_xy loaded")
+        tau_xx_data = np.loadtxt("/home/petronio/Nextcloud/code/FLEHET1D/FLHET_test/tau_xx.dat")
+        tau_xx_temp = np.interp(
+            x_center, tau_xx_data[:, 0] / 100, tau_xx_data[:, 1]
+        )
+        tau_xx = linear_extrapolation_multi(tau_xx_temp, 2)
+        print("tau_xx loaded")
         heat_flux_temp = np.interp(
             x_center, empirical_term[:, 0] / 100, empirical_term[:, 4]
         )
@@ -550,26 +556,27 @@ def ConsToPrim(fU, fP, fJ=0.0):
     fP[5, :] = fU[4, :] / (phy_const.m_e * fU[1, :] / Mi)  # Ue_y
 
 
-# @njit
-def InviscidFlux(fP, fF, tau_xy=0.0, heat_flux_vec=0.0):
+@njit
+def InviscidFlux(fP, fF, tau_xy=0.0, heat_flux_vec=0.0, tau_xx=0.0):
     """
     Compute the inviscid flux.
     """
     fF[0, :] = fP[0, :] * VG * Mi  # rho_g*v_g
     fF[1, :] = fP[1, :] * fP[2, :] * Mi  # rho_i*v_i
     fF[2, :] = (
-        Mi * fP[1, :] * fP[2, :] * fP[2, :] + fP[1, :] * phy_const.e * fP[3, :]
+        Mi * fP[1, :] * fP[2, :] * fP[2, :] + fP[1, :] * phy_const.e * fP[3, :] + tau_xx 
     )  # M*n_i*v_i**2 + p_e
     fF[3, :] = (
         (
             5.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :]
+            + tau_xx
             + 0.5 * phy_const.m_e * fP[1, :] * fP[5, :] ** 2
         )
         * fP[4, :]
         + tau_xy * fP[5, :]
         + heat_flux_vec
     )  # (1/2*rhoe*uey^2*v_e + 5/2n_i*e*T_e*v_e)
-    fF[4, :] = phy_const.m_e * fP[1, :] * fP[5, :] * fP[4, :]  # (rhoe * uey * uex)
+    fF[4, :] = phy_const.m_e * fP[1, :] * fP[5, :] * fP[4, :]# + tau_xy # (rhoe * uey * uex)
 
 @njit
 def gradient(y, x):
@@ -758,7 +765,7 @@ def Source(fP, fS):
         - nu_ew * ni * Ew * phy_const.e
         - phy_const.e * ni * E_x * ve
         + 1.5 * Siz_arr * phy_const.e * 10.0  #
-        - 0.5 * Siz_arr * phy_const.m_e * Ue_y**2  # new term
+        # - 0.5 * Siz_arr * phy_const.m_e * Ue_y**2  # new term
     )  # Electron energy
     fS[4, :] = RieY + phy_const.e * ni * Barr * ve  # Momentum electrons azimuthal
 
@@ -981,7 +988,7 @@ def Rei_sat(ne, Te, vix, dx, mass):
 
 # Compute the Current
 @njit
-def compute_I(fP, fV, old_curr=True, n_old_U_ey_old=0.0):
+def compute_I(fP, fV, old_curr=True, n_old_U_ey_old=0.0, tau_xy=0.0, tau_xx=0.0):
     """Compute the discharge current using the old or the new scheme"""
 
     #############################################################
@@ -1027,7 +1034,8 @@ def compute_I(fP, fV, old_curr=True, n_old_U_ey_old=0.0):
     else:
         nu_m = ng * KEL + alpha_B * wce + nu_ew
 
-        div_p = gradient(ni * Te, x_center)
+        div_p = gradient(ni * Te - tau_xy[1:-1] * phy_const.e + tau_xx[1:-1] * phy_const.e, x_center)
+        # print((ni * Te)[10], tau_xy[10], tau_xx[10])
         div_mnuxuy = gradient(me * ni * ve * Ue_y, x_center)
         div_uey = gradient(Ue_y, x_center)
 
@@ -1230,7 +1238,7 @@ if TIMESCHEME == "Forward Euler":
     ##########################################################################################
     print("Using Forward Euler scheme")
     n_old_U_ey_old = np.copy(P[1, :] * P[5, :])
-    J = compute_I(P, V, False, n_old_U_ey_old)
+    J = compute_I(P, V, False, n_old_U_ey_old, tau_xy, tau_xx)
 
     while time < TIMEFINAL:
 
@@ -1263,6 +1271,7 @@ if TIMESCHEME == "Forward Euler":
             F_cell,
             tau_xy,
             heat_flux,
+            tau_xx,
         )
 
         # Compute the convective Delta t
@@ -1303,7 +1312,7 @@ if TIMESCHEME == "Forward Euler":
         # U[3,:] = np.where(U[3,:] >= 0., U[3,:], 0.)
 
         # Compute the current
-        J = compute_I(P, V, False, n_old_U_ey_old)
+        J = compute_I(P, V, False, n_old_U_ey_old, tau_xy, tau_xx)
 
         # Compute the primitive vars for next step
         ConsToPrim(U, P, J)
