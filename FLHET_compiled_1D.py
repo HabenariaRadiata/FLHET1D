@@ -576,7 +576,7 @@ def InviscidFlux(fP, fF, tau_xy=0.0, heat_flux_vec=0.0, tau_xx=0.0):
         + tau_xy * fP[5, :]
         + heat_flux_vec
     )  # (1/2*rhoe*uey^2*v_e + 5/2n_i*e*T_e*v_e)
-    fF[4, :] = phy_const.m_e * fP[1, :] * fP[5, :] * fP[4, :]# + tau_xy # (rhoe * uey * uex)
+    fF[4, :] = phy_const.m_e * fP[1, :] * fP[5, :] * fP[4, :] + tau_xy # (rhoe * uey * uex)
 
 @njit
 def gradient(y, x):
@@ -1034,7 +1034,7 @@ def compute_I(fP, fV, old_curr=True, n_old_U_ey_old=0.0, tau_xy=0.0, tau_xx=0.0)
     else:
         nu_m = ng * KEL + alpha_B * wce + nu_ew
 
-        div_p = gradient(ni * Te - tau_xy[1:-1] * phy_const.e + tau_xx[1:-1] * phy_const.e, x_center)
+        div_p = gradient(ni * Te - tau_xy[1:-1] * phy_const.e *0 + tau_xx[1:-1] * phy_const.e*0, x_center)
         # print((ni * Te)[10], tau_xy[10], tau_xx[10])
         div_mnuxuy = gradient(me * ni * ve * Ue_y, x_center)
         div_uey = gradient(Ue_y, x_center)
