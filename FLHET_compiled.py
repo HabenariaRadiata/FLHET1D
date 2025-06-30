@@ -167,6 +167,9 @@ if Circuit:
     dJdt = 0.0
     J0 = 0.0
 
+anode_potential = True
+
+
 if saveBField:
     plt.plot(x_center*100,B0*1e4)
     plt.plot([L0*100, L0*100], [0.,1.2*max(B0)*1e4],'k--')
@@ -313,7 +316,7 @@ def Source(P, S):
     sigma      = 0.207*Te**(0.549)
     sigma_scl  = 1. - 8.3*np.sqrt(m/M)
     sigma[sigma > sigma_scl] = sigma_scl
-    h_R = 0.4
+    h_R = 0.3
     nu_iw      = 2 * h_R * (1.0 / (R2 - R1)) * np.sqrt(phy_const.e * Te / M)
     index_L0 = np.argmax(x_center > L0)
     nu_iw[index_L0:] = 0.0
@@ -377,7 +380,7 @@ def Source(P, S):
 
 
 # Compute the Current
-@njit
+# @njit
 def compute_I(P, V):
 
 
@@ -438,7 +441,7 @@ def compute_I(P, V):
     sigma      = 0.207*Te**(0.549)
     sigma_scl  = 1. - 8.3*np.sqrt(m/M)
     sigma[sigma > sigma_scl] = sigma_scl
-    h_R = 0.4
+    h_R = 0.3
     nu_iw      = 2 * h_R * (1.0 / (R2 - R1)) * np.sqrt(phy_const.e * Te / M)
     # nu_iw      = 2 * 0.5 * (1.0 / (R2 - R1)) * np.sqrt(phy_const.e * Te / M)
     index_L0 = np.argmax(x_center > L0)
@@ -481,7 +484,26 @@ def compute_I(P, V):
         * Delta_x
         / 2.0
     )
-    top = V + value_trapz_1
+
+    if anode_potential:
+        Te_anode = P[3, 0]  # Get the Te at the anode\
+        # print("Te_anode = {} eV".format(Te_anode))
+        Ce = (8 * phy_const.e * Te_anode / (np.pi * phy_const.m_e)) ** 0.5  # Electron thermal speed
+        # print("Ce = {:.2f} m/s".format(Ce))
+        Uze = P[4, 0]  # Get the Ue at the anode
+        # print("Uze = {:.2f} m/s".format(Uze))
+        try:
+            if (Uze == 0.0) or (Ce == 0.0):
+                phi_anode = 0.0
+            else:
+                phi_anode = Te_anode * np.log(- Ce / (4 * Uze))
+        except:
+            print("Error in computing phi_anode: Ce = {}, Uze = {}".format(Ce, Uze))
+        print("phi_anode = {:.2f} V".format(phi_anode))
+        V_a = V - phi_anode  # Adjust the voltage by the anode potential
+    else:
+        V_a = V
+    top = V_a + value_trapz_1
 
     value_trapz_2 = (
         np.sum(((1.0 / (mu_eff * ni))[1:] + (1.0 / (mu_eff * ni))[:-1])) * Delta_x / 2.0
@@ -646,6 +668,7 @@ PrimToCons(P, U)
 #           U^{n+1}_j = U^{n}_j - Dt/Dx(F^n_{j+1/2} - F^n_{j-1/2}) + Dt S^n_j            #
 #                                                                                        #
 ##########################################################################################
+print("Starting the simulation with time scheme: ", TIMESCHEME)
 
 if TIMESCHEME == "Forward Euler":
     J = compute_I(P, V)
