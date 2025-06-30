@@ -250,7 +250,7 @@ if empirical_term:
         empirical_term_interp_y = np.interp(
             x_center, empirical_term[:, 0] / 100, empirical_term[:, 1]
         )
-        print("Empirical term y loaded.")
+        print("Empirical term y loaded.", len(empirical_term_interp_y))
         empirical_term_interp_x = np.interp(
             x_center, empirical_term[:, 0] / 100, empirical_term[:, 2]
         )
@@ -260,10 +260,16 @@ if empirical_term:
         )
         tau_xy = linear_extrapolation_multi(tau_xy_temp, 2)
         print("tau_xy loaded")
+        tau_xx_data = np.loadtxt(
+            "/home/petronio/Nextcloud/code/FLEHET1D/FLHET_test/tau_xx.dat"
+        )
+        tau_xx_temp = np.interp(x_center, tau_xx_data[:, 0] / 100, tau_xx_data[:, 1])
+        tau_xx = linear_extrapolation_multi(tau_xx_temp, 2)*0 # We set tau_xx to zero for now...
+        print("tau_xx loaded")
         heat_flux_temp = np.interp(
             x_center, empirical_term[:, 0] / 100, empirical_term[:, 4]
         )
-        heat_flux = linear_extrapolation_multi(heat_flux_temp, 2) * 0
+        heat_flux = linear_extrapolation_multi(heat_flux_temp, 2) *0
         if sum(heat_flux) == 0:
             print("No heat flux")
         else:
@@ -271,8 +277,9 @@ if empirical_term:
     except:
         print("No empirical term file found.")
 else:
-    tau_xy = np.zeros(NBPOINTS+2)
-    heat_flux = np.zeros(NBPOINTS+2)
+    tau_xy = np.zeros(NBPOINTS + 2)
+    tau_xx = np.zeros(NBPOINTS + 2)
+    heat_flux = np.zeros(NBPOINTS + 2)
     empirical_term_interp_y = np.zeros(NBPOINTS)
     empirical_term_interp_x = np.zeros(NBPOINTS)
 
@@ -319,13 +326,12 @@ if msp.START_FROM_INPUT:
         ] = pickle.load(f)
 
     NBPOINTS_initialField = P_INIT.shape[1]
-    # Delta_x_initialField  = LX/NBPOINTS_initialField
+
     x_mesh_initialField = np.zeros(
         NBPOINTS_initialField + 1, dtype=float
     )  # Mesh in the interface
     x_mesh_initialField[1:-1] = 0.5 * (x_center_INIT[:-1] + x_center_INIT[1:])
     x_mesh_initialField[-1] = LX
-    # x_center_initialField = np.linspace(Delta_x_initialField, LX - Delta_x_initialField, NBPOINTS_initialField)     # Mesh in the center of cell
 
     # interpolation of the initial profiles on the current mesh
     P0_INTERP = interpolate.interp1d(
@@ -551,25 +557,29 @@ def ConsToPrim(fU, fP, fJ=0.0):
 
 
 @njit
-def InviscidFlux(fP, fF, tau_xy=0.0, heat_flux_vec=0.0):
+def InviscidFlux(fP, fF, tau_xy=0.0, heat_flux_vec=0.0, tau_xx=0.0):
     """
     Compute the inviscid flux.
     """
     fF[0, :] = fP[0, :] * VG * Mi  # rho_g*v_g
     fF[1, :] = fP[1, :] * fP[2, :] * Mi  # rho_i*v_i
     fF[2, :] = (
-        Mi * fP[1, :] * fP[2, :] * fP[2, :] + fP[1, :] * phy_const.e * fP[3, :]
+        Mi * fP[1, :] * fP[2, :] * fP[2, :] + fP[1, :] * phy_const.e * fP[3, :] + tau_xx
     )  # M*n_i*v_i**2 + p_e
     fF[3, :] = (
         (
             5.0 / 2.0 * fP[1, :] * phy_const.e * fP[3, :]
+            + tau_xx
             + 0.5 * phy_const.m_e * fP[1, :] * fP[5, :] ** 2
         )
         * fP[4, :]
         + tau_xy * fP[5, :]
         + heat_flux_vec
     )  # (1/2*rhoe*uey^2*v_e + 5/2n_i*e*T_e*v_e)
-    fF[4, :] = phy_const.m_e * fP[1, :] * fP[5, :] * fP[4, :]  # (rhoe * uey * uex)
+    fF[4, :] = (
+        phy_const.m_e * fP[1, :] * fP[5, :] * fP[4, :]
+    )  # (rhoe * uey * uex) HERE TAU_XY IS ZERO, WE CONSIDER IT AS A SOURCE TERM INSIDE R_EI_Y
+
 
 @njit
 def gradient(y, x):
@@ -586,9 +596,9 @@ def gradient(y, x):
 
 @njit
 def compute_E(fP):
-    '''
+    """
     Compute the electric field E.
-    '''
+    """
     # TODO: This is already computed! Maybe move to the source
     #############################################################
     #       We give a name to the vars to make it more readable
@@ -655,9 +665,9 @@ def compute_E(fP):
 
 @njit
 def Source(fP, fS):
-    '''
+    """
     Compute the source terms.
-    '''
+    """
     #############################################################
     #       We give a name to the vars to make it more readable
     #############################################################
@@ -758,16 +768,15 @@ def Source(fP, fS):
         - nu_ew * ni * Ew * phy_const.e
         - phy_const.e * ni * E_x * ve
         + 1.5 * Siz_arr * phy_const.e * 10.0  #
-        - 0.5 * Siz_arr * phy_const.m_e * Ue_y**2  # new term
     )  # Electron energy
     fS[4, :] = RieY + phy_const.e * ni * Barr * ve  # Momentum electrons azimuthal
 
 
 @njit
 def heatFlux(fP, fS):
-    '''
+    """
     Compute the heat flux.
-    '''
+    """
     #############################################################
     #       We give a name to the vars to make it more readable
     #############################################################
@@ -779,18 +788,18 @@ def heatFlux(fP, fS):
     #       Compute the rates   #
     #############################
 
-    sigma = 2.0 * Te / ESTAR  # SEE yield
-    sigma[sigma > 0.986] = 0.986
-    if wall_inter_type == "Default":
-        # nu_iw value before Martin changed the code for Charoy's test cases.
-        nu_iw = (4.0 / 3.0) * (1.0 / (R2 - R1)) * np.sqrt(phy_const.e * Te / Mi)
-        # Limit the wall interactions to the inner channel
-        nu_iw[x_center > LTHR] = 0.0
-        nu_ew = nu_iw / (1.0 - sigma)  # Electron - wall collision rate
+    # sigma = 2.0 * Te / ESTAR  # SEE yield
+    # sigma[sigma > 0.986] = 0.986
+    # if wall_inter_type == "Default":
+    #     # nu_iw value before Martin changed the code for Charoy's test cases.
+    #     nu_iw = (4.0 / 3.0) * (1.0 / (R2 - R1)) * np.sqrt(phy_const.e * Te / Mi)
+    #     # Limit the wall interactions to the inner channel
+    #     nu_iw[x_center > LTHR] = 0.0
+    #     nu_ew = nu_iw / (1.0 - sigma)  # Electron - wall collision rate
 
-    elif wall_inter_type == "None":
-        nu_iw = np.zeros(Te.shape, dtype=float)  # Ion - wall collision rate
-        nu_ew = np.zeros(Te.shape, dtype=float)  # Electron - wall collision rate
+    # elif wall_inter_type == "None":
+    #     nu_iw = np.zeros(Te.shape, dtype=float)  # Ion - wall collision rate
+    #     nu_ew = np.zeros(Te.shape, dtype=float)  # Electron - wall collision rate
 
     # TODO: Put decreasing wall collisions (Not needed for the moment)
     #    if decreasing_nu_iw:
@@ -804,19 +813,30 @@ def heatFlux(fP, fS):
     ##################################################
     #       Compute the electron properties          #
     ##################################################
-    phi_W = Te * np.log(np.sqrt(Mi / (2 * np.pi * me)) * (1 - sigma))  # Wall potential
-    Ew = 2 * Te + (1 - sigma) * phi_W  # Energy lost at the wall
+    # phi_W = Te * np.log(np.sqrt(Mi / (2 * np.pi * me)) * (1 - sigma))  # Wall potential
+    # Ew = 2 * Te + (1 - sigma) * phi_W  # Energy lost at the wall
+    alpha_B_omega_ce = alpha_B * wce  # alpha_B is a constant, wce is the electron cyclotron frequency
+    # nu_m_hf = ng * KEL + np.concatenate([ [alpha_B_omega_ce[0]], alpha_B_omega_ce, [alpha_B_omega_ce[-1]] ]) + nu_ew  #
+    nu_m_hf = np.empty(len(alpha_B_omega_ce) + 2, dtype=alpha_B_omega_ce.dtype)
+    nu_m_hf[0] = alpha_B_omega_ce[0]
+    nu_m_hf[1:-1] = alpha_B_omega_ce
+    nu_m_hf[-1] = alpha_B_omega_ce[-1]
 
-    nu_m = ng * KEL + alpha_B * wce + nu_ew  #
 
-    kappa = 5.0 / 2.0 * ni * phy_const.e**2 * Te / (phy_const.m_e * nu_m)
-    kappa_perp = kappa / (1 + (wce / nu_m) ** 2)
+    wce_incr = np.concatenate(
+        [[wce[0]], wce, [wce[-1]]]
+    )  # To avoid the ghost cells to be used in the computation of wce
+    kappa = 5.0 / 2.0 * ni * phy_const.e**2 * Te / (phy_const.m_e * nu_m_hf)
+    kappa_perp = kappa / (1 + (wce_incr / nu_m_hf) ** 2)
 
     # kappa_12 = 0.5*(kappa[1:] + kappa[:-1])
     kappa_12 = 0.5 * (kappa_perp[1:] + kappa_perp[:-1])
-    grad_Te = (Te[1:] - Te[:-1]) / (x_center[1:] - x_center[:-1])
+    x_center_incr = np.concatenate(
+        [[x_center[0] - Delta_x[0]], x_center[:], [x_center[-1] + Delta_x[0]]]
+    )  # To avoid the ghost cells to be used in the computation of grad_Te
+    grad_Te = (Te[1:] - Te[:-1]) / (x_center_incr[1:] - x_center_incr[:-1])
 
-    q_12 = -0.5 * kappa_12 * grad_Te  # 1/2 test just to match P.A. data
+    q_12 = -kappa_12 * grad_Te  # 1/2 test just to match P.A. data
     q_source = (q_12[1:] - q_12[:-1]) / Delta_x
 
     # fS[0, :] = (-Siz_arr + nu_iw[:] * ni[:]) * Mi # Gas Density
@@ -853,9 +873,9 @@ def TDMA(
 
 @njit
 def heatFluxImplicit(fP, fDelta_t):
-    '''
+    """
     Compute the heat flux with an implicit scheme.
-    '''
+    """
     #############################################################
     #       We give a name to the vars to make it more readable
     #############################################################
@@ -943,32 +963,6 @@ def simpson(y, x):
     dx = x[1] - x[0]
     return dx / 3 * np.sum(y[0:-1:2] + 4 * y[1::2] + y[2::2])
 
-
-@njit
-def calculate_Rei(ne, Te, uey):
-    """Calculate the theoretical electron-ion collision friction using a Maxwellian distribution"""
-    lambda_D = (
-        (phy_const.epsilon_0 * Te * phy_const.elementary_charge)
-        / (ne * phy_const.elementary_charge**2)
-    ) ** 0.5
-    omega_pe = (ne * phy_const.elementary_charge) / (
-        phy_const.electron_mass * phy_const.epsilon_0
-    ) ** 0.5
-    Ewave = 1.5 * ne * Te * phy_const.elementary_charge / 432
-    vTe = (2 * Te * phy_const.elementary_charge / phy_const.electron_mass) ** 0.5
-    Rei_Maxwellian = (
-        4
-        * (2 * np.pi) ** 0.5
-        * omega_pe
-        * lambda_D
-        * Ewave
-        * uey
-        / vTe**3
-        * np.exp(-((uey / vTe) ** 2))
-    )
-    return Rei_Maxwellian
-
-
 @njit
 def Rei_sat(ne, Te, vix, dx, mass):
     """
@@ -981,7 +975,7 @@ def Rei_sat(ne, Te, vix, dx, mass):
 
 # Compute the Current
 @njit
-def compute_I(fP, fV, old_curr=True, n_old_U_ey_old=0.0):
+def compute_I(fP, fV, old_curr=True, n_old_U_ey_old=0.0, tau_xx=0.0):
     """Compute the discharge current using the old or the new scheme"""
 
     #############################################################
@@ -1027,7 +1021,9 @@ def compute_I(fP, fV, old_curr=True, n_old_U_ey_old=0.0):
     else:
         nu_m = ng * KEL + alpha_B * wce + nu_ew
 
-        div_p = gradient(ni * Te, x_center)
+        div_p = gradient(
+            ni * Te + tau_xx[1:-1] * phy_const.e, x_center
+        )
         div_mnuxuy = gradient(me * ni * ve * Ue_y, x_center)
         div_uey = gradient(Ue_y, x_center)
 
@@ -1230,7 +1226,7 @@ if TIMESCHEME == "Forward Euler":
     ##########################################################################################
     print("Using Forward Euler scheme")
     n_old_U_ey_old = np.copy(P[1, :] * P[5, :])
-    J = compute_I(P, V, False, n_old_U_ey_old)
+    J = compute_I(P, V, False, n_old_U_ey_old, tau_xx)
 
     while time < TIMEFINAL:
 
@@ -1263,6 +1259,7 @@ if TIMESCHEME == "Forward Euler":
             F_cell,
             tau_xy,
             heat_flux,
+            tau_xx,
         )
 
         # Compute the convective Delta t
@@ -1303,7 +1300,7 @@ if TIMESCHEME == "Forward Euler":
         # U[3,:] = np.where(U[3,:] >= 0., U[3,:], 0.)
 
         # Compute the current
-        J = compute_I(P, V, False, n_old_U_ey_old)
+        J = compute_I(P, V, False, n_old_U_ey_old, tau_xx)
 
         # Compute the primitive vars for next step
         ConsToPrim(U, P, J)
