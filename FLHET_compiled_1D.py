@@ -327,13 +327,12 @@ if msp.START_FROM_INPUT:
         ] = pickle.load(f)
 
     NBPOINTS_initialField = P_INIT.shape[1]
-    # Delta_x_initialField  = LX/NBPOINTS_initialField
+
     x_mesh_initialField = np.zeros(
         NBPOINTS_initialField + 1, dtype=float
     )  # Mesh in the interface
     x_mesh_initialField[1:-1] = 0.5 * (x_center_INIT[:-1] + x_center_INIT[1:])
     x_mesh_initialField[-1] = LX
-    # x_center_initialField = np.linspace(Delta_x_initialField, LX - Delta_x_initialField, NBPOINTS_initialField)     # Mesh in the center of cell
 
     # interpolation of the initial profiles on the current mesh
     P0_INTERP = interpolate.interp1d(
@@ -770,7 +769,6 @@ def Source(fP, fS):
         - nu_ew * ni * Ew * phy_const.e
         - phy_const.e * ni * E_x * ve
         + 1.5 * Siz_arr * phy_const.e * 10.0  #
-        # - 0.5 * Siz_arr * phy_const.m_e * Ue_y**2  # new term
     )  # Electron energy
     fS[4, :] = RieY + phy_const.e * ni * Barr * ve  # Momentum electrons azimuthal
 
@@ -965,32 +963,6 @@ def simpson(y, x):
     """
     dx = x[1] - x[0]
     return dx / 3 * np.sum(y[0:-1:2] + 4 * y[1::2] + y[2::2])
-
-
-@njit
-def calculate_Rei(ne, Te, uey):
-    """Calculate the theoretical electron-ion collision friction using a Maxwellian distribution"""
-    lambda_D = (
-        (phy_const.epsilon_0 * Te * phy_const.elementary_charge)
-        / (ne * phy_const.elementary_charge**2)
-    ) ** 0.5
-    omega_pe = (ne * phy_const.elementary_charge) / (
-        phy_const.electron_mass * phy_const.epsilon_0
-    ) ** 0.5
-    Ewave = 1.5 * ne * Te * phy_const.elementary_charge / 432
-    vTe = (2 * Te * phy_const.elementary_charge / phy_const.electron_mass) ** 0.5
-    Rei_Maxwellian = (
-        4
-        * (2 * np.pi) ** 0.5
-        * omega_pe
-        * lambda_D
-        * Ewave
-        * uey
-        / vTe**3
-        * np.exp(-((uey / vTe) ** 2))
-    )
-    return Rei_Maxwellian
-
 
 @njit
 def Rei_sat(ne, Te, vix, dx, mass):
