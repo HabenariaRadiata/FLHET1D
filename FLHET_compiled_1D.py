@@ -22,7 +22,7 @@ from modules.simu_params import SimuParameters
 # F = [rhog*Vg, rhoUi, rhoUi*Ui + ne*e*Te, 5/2 ne*e*Te*Ue].
 #
 # We use the following primitive variables
-# P = [ng, ni,  ui,  Te, ve_x, ve_y]
+# P = [ng, ni, ui, Te, ve_x, ve_y]
 #
 # At the boundaries we impose
 # Inlet:
@@ -30,15 +30,13 @@ from modules.simu_params import SimuParameters
 #       ui = -u_bohm
 # Outlet:
 #       Te = Te_Cath
-#       ve = 0
+#       ve_y = 0
 #
 # The user can change the PHYSICAL PARAMETERS
 # or the NUMERICAL PARAMETERS
 #
 #
 # This script FLHET_compiled.py has a few functions compiled with numba.
-# It is approximately 2.3 times faster than its not compiled counterpart:
-# the LPP1D.py script.
 ##########################################################
 
 
@@ -62,7 +60,7 @@ R1 = msp.R1
 R2 = msp.R2
 LX = msp.LX
 LTHR = msp.LTHR
-KEL = msp.KEL
+KEL = 0.0
 TIMESCHEME = msp.TIMESCHEME
 TIMEFINAL = msp.TIMEFINAL
 SAVERATE = msp.SAVERATE
@@ -82,9 +80,11 @@ IMPlICIT = msp.IMPlICIT
 boolCircuit = msp.Circuit
 V = msp.V0
 thomas_BM_testcase = msp.thomas_BM_testcase
-empirical_term = msp.empirical_term
-empirical_term_path = msp.empirical_term_path
+if msp.empirical_term == True:
+    empirical_term = msp.empirical_term
+    empirical_term_path = msp.empirical_term_path
 T_min = 1.0
+L0 = msp.LTHR # Length of the thruster channel
 
 # Set global variables
 me = phy_const.m_e
@@ -132,6 +132,18 @@ msp.save_config_file("Configuration.cfg")
 Delta_t = 1.0  # Initialization of Delta_t (do not change)
 
 ##########################################################
+#           Choose between 4 and 5 equations             #
+#           4 equations: no azimuthal velocity           #
+#          5 equations: with azimuthal velocity          #
+##########################################################   
+if msp.BTYPE == "CharoyBenchmark":
+    azimuthal_velocity = True
+    print("Charoy's benchmark test case selected, use azimuthal electron velocity equation.")
+else:
+    azimuthal_velocity = False
+    print("No azimuthal electron velocity equation, 4 equations system.")
+
+##########################################################
 #           Allocation of large vectors                  #
 ##########################################################
 
@@ -175,10 +187,36 @@ def compute_B_array():
 
     return Barr
 
-
-Barr = compute_B_array()
-Barr_extended = np.concatenate([[Barr[0]], Barr, [Barr[-1]]])
+if msp.BTYPE == "CharoyBenchmark":
+    Barr = compute_B_array()
+    Barr_extended = np.concatenate([[Barr[0]], Barr, [Barr[-1]]])
+elif msp.BTYPE   == "Default":
+    LB1 = msp.LB1
+    LB2 = msp.LB2
+    B0 = msp.BMAX * np.exp(-(((x_center - L0) / LB1) ** 2.0))                               # Magnetic field within the thruster
+    B0 = np.where(x_center < L0, B0, msp.BMAX * np.exp(-(((x_center - L0) / LB2) ** 2.0)))  # Magnetic field outside the thruster
+    Barr = B0
+    Barr_extended = np.concatenate([[Barr[0]], Barr, [Barr[-1]]])
+elif msp.BTYPE == "StationaryCodeBField":
+    CmagIn = msp.CmagIn
+    CmagOut = msp.CmagOut
+    B0 = msp.BMAX * np.exp(- CmagIn*(((x_center - L0) / L0) ** 2.0))                        # Magnetic field within the thruster
+    B0 = np.where(x_center < L0, B0, msp.BMAX * np.exp(- CmagOut*(((x_center - L0) / L0) ** 2.0)))  # Magnetic field outside the thruster
+    Barr = B0
+    Barr_extended = np.concatenate([[Barr[0]], Barr, [Barr[-1]]])
 wce = phy_const.e * Barr / me  # electron cyclotron frequency
+
+if msp.saveBField:
+    plt.plot(x_center*100,Barr*1e4)
+    plt.plot([L0*100, L0*100], [0.,1.2*max(Barr)*1e4],'k--')
+    plt.xlabel("x [cm]")
+    plt.ylabel("B [G]")
+    plt.ylim([0,max(Barr)*1e4+10])
+    plt.grid()
+    plt.savefig(Resultsdir+"/BfieldSTP-100_Stationary.pdf")
+    plt.close()
+
+    sys.exit(0)
 
 alpha_B1, alpha_B2 = msp.extract_anom_coeffs()
 
@@ -242,6 +280,7 @@ def linear_extrapolation_multi(vec, num_points=3):
 
     return extended_vec
 
+
 print("empirical_term: ", empirical_term)
 if empirical_term:
     try:
@@ -264,12 +303,14 @@ if empirical_term:
             "/home/petronio/Nextcloud/code/FLEHET1D/FLHET_test/tau_xx.dat"
         )
         tau_xx_temp = np.interp(x_center, tau_xx_data[:, 0] / 100, tau_xx_data[:, 1])
-        tau_xx = linear_extrapolation_multi(tau_xx_temp, 2)*0 # We set tau_xx to zero for now...
+        tau_xx = (
+            linear_extrapolation_multi(tau_xx_temp, 2) * 0
+        )  # We set tau_xx to zero for now...
         print("tau_xx loaded")
         heat_flux_temp = np.interp(
             x_center, empirical_term[:, 0] / 100, empirical_term[:, 4]
         )
-        heat_flux = linear_extrapolation_multi(heat_flux_temp, 2) *0
+        heat_flux = linear_extrapolation_multi(heat_flux_temp, 2) * 0
         if sum(heat_flux) == 0:
             print("No heat flux")
         else:
@@ -476,6 +517,8 @@ time = 0.0
 iter = 0
 J = 0.0  # Initial Current
 
+anode_potential = True
+
 if thomas_BM_testcase:
     """Thomas' benchmark ionization source term"""
     xm = (msp.LSIZ1 + msp.LSIZ2) / 2
@@ -554,6 +597,8 @@ def ConsToPrim(fU, fP, fJ=0.0):
     )  # Te
     fP[4, :] = fP[2, :] - fJ / (A0 * phy_const.e * fP[1, :])  # ve
     fP[5, :] = fU[4, :] / (phy_const.m_e * fU[1, :] / Mi)  # Ue_y
+    if not azimuthal_velocity:
+        fP[5, :] = 0.0
 
 
 @njit
@@ -579,6 +624,8 @@ def InviscidFlux(fP, fF, tau_xy=0.0, heat_flux_vec=0.0, tau_xx=0.0):
     fF[4, :] = (
         phy_const.m_e * fP[1, :] * fP[5, :] * fP[4, :]
     )  # (rhoe * uey * uex) HERE TAU_XY IS ZERO, WE CONSIDER IT AS A SOURCE TERM INSIDE R_EI_Y
+    if not azimuthal_velocity:
+        fF[4, :] = 0.0
 
 
 @njit
@@ -662,6 +709,59 @@ def compute_E(fP):
 
     return E
 
+@njit
+def compute_Kel(Te):
+    """This function calculates the ionization rate"""
+    # Polynomial coefficients
+    c0 = -3.04474930e+01
+    c1 = 1.89683694e+00
+    c2 = -6.63807968e-01
+    c3 = 9.37924042e-03
+    c4 = 2.19404998e-02
+    c5 = -2.27126387e-03
+
+    # Compute the natural logarithm of Te
+    log_Te = np.log(Te)
+
+    # Manually evaluate the polynomial using Horner's method (unrolled loop)
+    result = c5
+    result = result * log_Te + c4
+    result = result * log_Te + c3
+    result = result * log_Te + c2
+    result = result * log_Te + c1
+    result = result * log_Te + c0
+
+    # Return the exponential of the polynomial result
+    return np.exp(result)
+
+@njit
+def compute_Kiz(Te):
+    # Xenon ionization
+    K0      = 1.18122959e-13
+    epsilon = 12.13
+    A       = 1.29330521e-01
+    B       = 1.00068880e-02
+    C       = 6.97445869e-01
+
+    return K0*np.exp(-epsilon/Te)*(np.log(1 + A*Te + B*Te**2))**C
+
+@njit
+def computeEpsilonLoss(Te):
+    def computeKprocess(Te, K0, epsilon, A, B, C):
+        arg = 1 + A * Te + B * Te**2
+        arg = np.maximum(arg, 1.0)  # Ensure all values are >= 1
+        # if np.any(arg <= 1):
+        #     arg = 1.0
+        return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
+    
+    K_iz  = computeKprocess(Te, 1.18122959e-13, 12.13, 1.29330521e-01, 1.00068880e-02, 6.97445869e-01)
+    K_ex1 = computeKprocess(Te, 2.37016128e-14, 8.315, 7.99682247e-02, -5.91358673e-04, 4.51997276e-01)
+    K_ex2 = computeKprocess(Te, 9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
+    K_ex3 = computeKprocess(Te, 1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
+    K_ex4 = computeKprocess(Te, 7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
+
+    return 12.13 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70)/K_iz + 3*me/Mi*compute_Kel(Te)*Te/K_iz
+
 
 @njit
 def Source(fP, fS):
@@ -677,21 +777,32 @@ def Source(fP, fS):
     Te = fP[3, :]
     ve = fP[4, :]
     Ue_y = fP[5, :]
+    if not azimuthal_velocity:
+        Ue_y *= 0.
 
     #############################
-    #     Compute the rates     #
+    #       Compute the rates   #
     #############################
+    if thomas_BM_testcase:
+        Kel = 0. # no collisions
+    else:
+        Kel = compute_Kel(Te)  # Electron - neutral  collision rate     
+
     Siz_arr = np.zeros(
         ng.shape, dtype=float
     )  # the final unit of Siz_arr is m^(-3).s^(-1)
     # Computing ionization source term:
     if not boolSizImposed:
-        Kiz = (
-            1.8e-13 * (((1.5 * Te) / Eion) ** 0.25) * np.exp(-4 * Eion / (3 * Te))
-        )  # Ion - neutral  collision rate          MARTIN: Change
+        # Kiz = (
+        #     1.8e-13 * (((1.5 * Te) / Eion) ** 0.25) * np.exp(-4 * Eion / (3 * Te))
+        # )  # Ion - neutral  collision rate          MARTIN: Change
+        Kiz = compute_Kiz(Te)
         Siz_arr = ng * ni * Kiz
     else:
         Siz_arr = imposed_Siz
+
+    epsilonLoss = computeEpsilonLoss(Te)
+
 
     # If ionization collision are considered in the momentum and energy equations.
     if boolIonColl:
@@ -699,14 +810,15 @@ def Source(fP, fS):
     else:
         d_IC = 0.0
 
-    sigma = 2.0 * Te / ESTAR  # SEE yield
-    sigma[sigma > 0.986] = 0.986
+    sigma      = 0.207*Te**(0.549)
+    sigma_scl  = 1. - 8.3*np.sqrt(m/M)
+    sigma[sigma > sigma_scl] = sigma_scl
+    h_R = 0.3
     if wall_inter_type == "Default":
-        # nu_iw value before Martin changed the code for Charoy's test cases.
-        nu_iw = (4.0 / 3.0) * (1.0 / (R2 - R1)) * np.sqrt(phy_const.e * Te / Mi)
-        # Limit the wall interactions to the inner channel
-        nu_iw[x_center > LTHR] = 0.0
-        nu_ew = nu_iw / (1.0 - sigma)  # Electron - wall collision rate
+        nu_iw      = 2 * h_R * (1.0 / (R2 - R1)) * np.sqrt(phy_const.e * Te / M)
+        index_L0 = np.argmax(x_center > L0)
+        nu_iw[index_L0:] = 0.0
+        nu_ew      =  nu_iw / (1 - sigma)                                        # Electron - wall 
     elif wall_inter_type == "None":
         nu_iw = np.zeros(Te.shape, dtype=float)  # Ion - wall collision rate
         nu_ew = np.zeros(Te.shape, dtype=float)  # Electron - wall collision rate
@@ -723,11 +835,11 @@ def Source(fP, fS):
     ##################################################
     #       Compute the electron properties          #
     ##################################################
-    phi_W = Te * np.log(np.sqrt(Mi / (2 * np.pi * me)) * (1 - sigma))  # Wall potential
+    phi_W  = Te * np.log(np.sqrt(Mi / (2 * np.pi * me)) * (1 - sigma))  # Wall potential
     Ew = 2 * Te + (1 - sigma) * phi_W  # Energy lost at the wall
 
     nu_m = (
-        ng * KEL + alpha_B * wce + nu_ew
+        ng * Kel + alpha_B * wce + nu_ew
     )  # Electron momentum - transfer collision frequency
 
     # if the empirical term is used, we compute it here
@@ -739,16 +851,10 @@ def Source(fP, fS):
         RieY = -phy_const.m_e * nu_m * ni * Ue_y
         RieX = -phy_const.m_e * ni * nu_m * ve
 
-    # mu_eff = (phy_const.e / (me* nu_m)) * (
-    #     1.0 / (1 + (wce / nu_m) ** 2)
-    #     )  # Effective mobility
-
-    # div_u   = gradient(ve, d=Delta_x)               # To be used with 3./2. in line 160 and + phy_const.e*ni*Te*div_u  in line 231
-
     if boolPressureDiv:  # TODO: check that is is verified by default
         div_p = gradient(
             phy_const.e * ni * Te, x_center
-        )  # To be used with 5./2 and + div_p*ve in line 231
+        )
     else:
         div_p = np.zeros(Te.shape)  # this line to match the old version of the code.
 
@@ -757,20 +863,34 @@ def Source(fP, fS):
     # Compute the source terms
     fS[0, :] = (-d_IC * Siz_arr + nu_iw * ni) * Mi  # Gas Density
     fS[1, :] = (Siz_arr - nu_iw * ni) * Mi  # Ion Density
-    fS[2, :] = (
-        d_IC * Siz_arr * VG * Mi
-        + RieX
-        - phy_const.e * ni * Barr * Ue_y
-        - nu_iw * ni * vi * Mi
-    )  # Momentum electrons axial
-    fS[3, :] = (
-        -d_IC * Siz_arr * Eion * gamma_i * phy_const.e
-        - nu_ew * ni * Ew * phy_const.e
-        - phy_const.e * ni * E_x * ve
-        + 1.5 * Siz_arr * phy_const.e * 10.0  #
-    )  # Electron energy
-    fS[4, :] = RieY + phy_const.e * ni * Barr * ve  # Momentum electrons azimuthal
-
+    if azimuthal_velocity:
+        fS[2, :] = (
+            d_IC * Siz_arr * VG * Mi
+            + RieX
+            - phy_const.e * ni * Barr * Ue_y
+            - nu_iw * ni * vi * Mi
+        )  # Momentum electrons axial
+        fS[3, :] = (
+            -d_IC * Siz_arr * Eion * gamma_i * phy_const.e
+            - nu_ew * ni * Ew * phy_const.e
+            - phy_const.e * ni * E_x * ve
+            + 1.5 * Siz_arr * phy_const.e * 10.0  #
+        )  # Electron energy
+        fS[4, :] = RieY + phy_const.e * ni * Barr * ve  # Momentum electrons azimuthal
+    else:
+        mu_eff = (phy_const.e / (me * nu_m)) * (1.0 / (1 + (wce / nu_m) ** 2))  # Effective mobility
+        fS[2, :] = (
+            ng[:] * ni[:] * Kiz[:] * VG
+            - (phy_const.e / (mu_eff[:] * Mi)) * ni[:] * ve[:]
+            - nu_iw[:] * ni[:] * vi[:]
+        ) * Mi  # Momentum
+        fS[3, :] = (
+            - ng[:] * ni[:] * Kiz[:] * epsilonLoss[:] * phy_const.e
+            - nu_ew[:] * ni[:] * Ew * phy_const.e
+            + ni[:] / mu_eff[:] * (ve[:]) ** 2.0 * phy_const.e
+            + div_p * ve
+        )  # + phy_const.e*ni*Te*div_u  #- gradI_term*ni*Te*grdI          # Energ
+        fS[4, :] = np.zeros(Te.shape, dtype=float)  # Momentum electrons azimuthal
 
 @njit
 def heatFlux(fP, fS):
@@ -815,13 +935,14 @@ def heatFlux(fP, fS):
     ##################################################
     # phi_W = Te * np.log(np.sqrt(Mi / (2 * np.pi * me)) * (1 - sigma))  # Wall potential
     # Ew = 2 * Te + (1 - sigma) * phi_W  # Energy lost at the wall
-    alpha_B_omega_ce = alpha_B * wce  # alpha_B is a constant, wce is the electron cyclotron frequency
+    alpha_B_omega_ce = (
+        alpha_B * wce
+    )  # alpha_B is a constant, wce is the electron cyclotron frequency
     # nu_m_hf = ng * KEL + np.concatenate([ [alpha_B_omega_ce[0]], alpha_B_omega_ce, [alpha_B_omega_ce[-1]] ]) + nu_ew  #
     nu_m_hf = np.empty(len(alpha_B_omega_ce) + 2, dtype=alpha_B_omega_ce.dtype)
     nu_m_hf[0] = alpha_B_omega_ce[0]
     nu_m_hf[1:-1] = alpha_B_omega_ce
     nu_m_hf[-1] = alpha_B_omega_ce[-1]
-
 
     wce_incr = np.concatenate(
         [[wce[0]], wce, [wce[-1]]]
@@ -963,6 +1084,7 @@ def simpson(y, x):
     dx = x[1] - x[0]
     return dx / 3 * np.sum(y[0:-1:2] + 4 * y[1::2] + y[2::2])
 
+
 @njit
 def Rei_sat(ne, Te, vix, dx, mass):
     """
@@ -1021,9 +1143,7 @@ def compute_I(fP, fV, old_curr=True, n_old_U_ey_old=0.0, tau_xx=0.0):
     else:
         nu_m = ng * KEL + alpha_B * wce + nu_ew
 
-        div_p = gradient(
-            ni * Te + tau_xx[1:-1] * phy_const.e, x_center
-        )
+        div_p = gradient(ni * Te + tau_xx[1:-1] * phy_const.e, x_center)
         div_mnuxuy = gradient(me * ni * ve * Ue_y, x_center)
         div_uey = gradient(Ue_y, x_center)
 
