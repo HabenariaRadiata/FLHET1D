@@ -249,6 +249,7 @@ def compute_Kel(Te):
     c5 = -2.27126387e-03
 
     # Compute the natural logarithm of Te
+    Te = np.where(Te <= 0, .1, Te)  # Avoid log(0) or negative values
     log_Te = np.log(Te)
 
     # Manually evaluate the polynomial using Horner's method (unrolled loop)
@@ -285,7 +286,10 @@ def computeEpsilonLoss(Te):
     K_ex2 = computeKprocess(Te, 9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
     K_ex3 = computeKprocess(Te, 1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
     K_ex4 = computeKprocess(Te, 7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
-
+    K_iz = np.where(K_iz == 0, 1e-20, K_iz, )  # Avoid division by zero
+    if np.any(K_iz == 0):
+        print("Warning: K_iz has zero values at indices", np.where(K_iz == 0))
+        sys.exit(0)
     return 12.13 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70)/K_iz + 3*m/M*compute_Kel(Te)*Te/K_iz
 
 # @njit
@@ -310,6 +314,14 @@ def Source(P, S):
     Kiz = compute_Kiz(Te)
     epsilonLoss = computeEpsilonLoss(Te)
 
+    if np.any(Te < 0):
+        print("Warning: Negative Te found at indices", np.where(Te < 0), "Te = ", Te[Te < 0])
+        Te[Te < 0] = 0.1
+
+    # test Te NaN
+    if np.any(np.isnan(Te)):
+        print("Warning: NaN Te found at indices", np.where(np.isnan(Te)))
+        Te[np.isnan(Te)] = 0.0
 
     ############################
     #       Wall Collisions    # 
