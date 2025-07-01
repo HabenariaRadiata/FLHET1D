@@ -342,8 +342,8 @@ def Source(P, S):
     S[1, :] = (ng[:] * ni[:] * Kiz[:] - nu_iw[:] * ni[:]) * M  # Ion Density
     S[2, :] = (
         ng[:] * ni[:] * Kiz[:] * VG
-        -phy_const.m_e * ni * nu_m * ve / M
-        - phy_const.e * ni * B0 * Ue_y
+        - phy_const.m_e * ni * nu_m * ve / M
+        - phy_const.e * ni * B0 * Ue_y / M
         - nu_iw[:] * ni[:] * ui[:]
     ) * M  # Momentum
     S[3, :] = (
