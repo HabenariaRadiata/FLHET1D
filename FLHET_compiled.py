@@ -31,8 +31,6 @@ import time as ttime
 # The user can change the PHYSICAL PARAMETERS
 # or the NUMERICAL PARAMETERS
 #
-# TODO: Test with Thomas' benchmark, add circuit
-#
 ##########################################################
 
 ##########################################################
@@ -356,7 +354,6 @@ def Source(P, S):
     phi_W  = Te * np.log(np.sqrt(M / (2 * np.pi * m)) * (1 - sigma))  # Wall potential
     Ew     = 2 * Te + (1 - sigma) * phi_W  # Energy lost at the wall
 
-    c_s    = np.sqrt(phy_const.e * Te / M)  # Sound velocity
     nu_m   = ( ng * Kel + alpha_B * wce + nu_ew)  # Electron momentum - transfer collision frequency
     mu_eff = (phy_const.e / (m * nu_m)) * (1.0 / (1 + (wce / nu_m) ** 2))  # Effective mobility
 
@@ -382,7 +379,6 @@ def Source(P, S):
 # Compute the Current
 # @njit
 def compute_I(P, V):
-
 
     def compute_Kel(Te):
         """This function calculates the ionization rate"""

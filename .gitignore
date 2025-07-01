@@ -22,3 +22,5 @@ Results_SPT*/*
 Results_SPT_1/*
 Results_SPT_2/*
 Results_tau/*
+
+modules/__pycache__/
