@@ -315,10 +315,10 @@ def Source(P, S):
     sigma_scl  = 1. - 8.3*np.sqrt(m/M)
     sigma[sigma > sigma_scl] = sigma_scl
     h_R = 0.3
-    nu_iw      = 2 * h_R * (1.0 / (R2 - R1)) * np.sqrt(phy_const.e * Te / M)
+    nu_iw = 2 * h_R * (1.0 / (R2 - R1)) * np.sqrt(phy_const.e * Te / M)
     index_L0 = np.argmax(x_center > L0)
     nu_iw[index_L0:] = 0.0
-    nu_ew      =  nu_iw / (1 - sigma)                                        # Electron - wall collision rate
+    nu_ew =  nu_iw / (1 - sigma)                    # Electron - wall collision rate
 
     # Eion = 12.1  # Ionization energy
     # gamma_i = 3  # Excitation coefficient
@@ -495,7 +495,7 @@ def compute_I(P, V):
                 phi_anode = Te_anode * np.log(- Ce / (4 * Uze))
         except:
             print("Error in computing phi_anode: Ce = {}, Uze = {}".format(Ce, Uze))
-        print("phi_anode = {:.2f} V".format(phi_anode))
+        # print("phi_anode = {:.2f} V".format(phi_anode))
         V_a = V - phi_anode  # Adjust the voltage by the anode potential
     else:
         V_a = V
@@ -673,13 +673,22 @@ if TIMESCHEME == "Forward Euler":
         if (iter % SAVERATE) == 0:
             SaveResults(P, U, P_Inlet, P_Outlet, J, V, x_center, time, i_save)
             i_save += 1
+            # print(
+            #     "Iter = ",
+            #     iter,
+            #     "\tTime = {:.2f}~µs".format(time / 1e-6),
+            #     "\tJ = {:.4f}~A".format(J),
+            # )
             print(
-                "Iter = ",
-                iter,
-                "\tTime = {:.2f}~µs".format(time / 1e-6),
-                "\tJ = {:.4f}~A".format(J),
+                "Iter = {}".format(iter),
+                "\t Time = {:.4f} µs".format(time * 1e6),
+                "\t J = {:.4f} A".format(J),
+                "\t V = {:.4f} V".format(V),
+                "\t max(Te) = {:.4f} eV".format(np.max(P[3, :])),
+                "\t max(ni) = {:.0e} m^-3".format(np.max(P[1, :])),
+                "\t max(ui) = {:.0f} m/s".format(np.max(P[2, :])),
+                "\t max(ng) = {:.0e} m^-3".format(np.max(P[0, :])),
             )
-
         # Set the boundaries
         SetInlet(P[:, 0], U_Inlet, P_Inlet, J, 1)
         SetOutlet(P[:, -1], U_Outlet, P_Outlet, J)
@@ -726,11 +735,21 @@ if TIMESCHEME == "TVDRK3":
         if (iter % SAVERATE) == 0:
             SaveResults(P, U, P_Inlet, P_Outlet, J, V, x_center, time, i_save)
             i_save += 1
+            # print(
+            #     "Iter = {}".format(iter),
+            #     "\t Time = {:.4f} µs".format(time * 1e6),
+            #     "\t J = {:.4f} A".format(J),
+            #     "\t V = {:.4f} V".format(V),
+            # )
             print(
                 "Iter = {}".format(iter),
                 "\t Time = {:.4f} µs".format(time * 1e6),
                 "\t J = {:.4f} A".format(J),
                 "\t V = {:.4f} V".format(V),
+                "\t max(Te) = {:.4f} eV".format(np.max(P[3, :])),
+                "\t max(ni) = {:.0e} m^-3".format(np.max(P[1, :])),
+                "\t max(ui) = {:.0f} m/s".format(np.max(P[2, :])),
+                "\t max(ng) = {:.0e} m^-3".format(np.max(P[0, :])),
             )
             if iter == 5:
                 sys.exit(1)

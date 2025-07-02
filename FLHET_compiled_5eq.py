@@ -229,7 +229,7 @@ def InviscidFlux(P, F):
         phy_const.m_e * P[1, :] * P[5, :] * P[4, :]
     )  # (rhoe * uey * uex)
 
-# @njit
+@njit
 def gradient(y, d):
     dp_dz = np.empty_like(y)
     dp_dz[1:-1] = (y[2:] - y[:-2]) / (2 * d)
@@ -238,6 +238,7 @@ def gradient(y, d):
 
     return dp_dz
 
+@njit
 def compute_Kel(Te):
     """This function calculates the ionization rate"""
     # Polynomial coefficients
@@ -263,6 +264,7 @@ def compute_Kel(Te):
     # Return the exponential of the polynomial result
     return np.exp(result)
 
+@njit
 def compute_Kiz(Te):
     # Xenon ionization
     K0      = 1.18122959e-13
@@ -273,26 +275,28 @@ def compute_Kiz(Te):
 
     return K0*np.exp(-epsilon/Te)*(np.log(1 + A*Te + B*Te**2))**C
 
+@njit
+def computeKprocess(Te, K0, epsilon, A, B, C):
+    arg = 1 + A * Te + B * Te**2
+    arg = np.maximum(arg, 1.0)  # Ensure all values are >= 1
+    # if np.any(arg <= 1):
+    #     arg = 1.0
+    return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
+
+@njit
 def computeEpsilonLoss(Te):
-    def computeKprocess(Te, K0, epsilon, A, B, C):
-        arg = 1 + A * Te + B * Te**2
-        arg = np.maximum(arg, 1.0)  # Ensure all values are >= 1
-        # if np.any(arg <= 1):
-        #     arg = 1.0
-        return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
     
     K_iz  = computeKprocess(Te, 1.18122959e-13, 12.13, 1.29330521e-01, 1.00068880e-02, 6.97445869e-01)
     K_ex1 = computeKprocess(Te, 2.37016128e-14, 8.315, 7.99682247e-02, -5.91358673e-04, 4.51997276e-01)
     K_ex2 = computeKprocess(Te, 9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
     K_ex3 = computeKprocess(Te, 1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
     K_ex4 = computeKprocess(Te, 7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
-    K_iz = np.where(K_iz == 0, 1e-20, K_iz, )  # Avoid division by zero
+    K_iz = np.where(K_iz == 0, 1e-20, K_iz)  # Avoid division by zero
     if np.any(K_iz == 0):
         print("Warning: K_iz has zero values at indices", np.where(K_iz == 0))
-        sys.exit(0)
     return 12.13 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70)/K_iz + 3*m/M*compute_Kel(Te)*Te/K_iz
 
-# @njit
+@njit
 def Source(P, S):
     #############################################################
     #       We give a name to the vars to make it more readable
@@ -365,7 +369,7 @@ def Source(P, S):
     )  # + phy_const.e*ni*Te*div_u  #- gradI_term*ni*Te*grdI          # Energy
     S[4, :] = -phy_const.m_e * nu_m * ni * Ue_y + phy_const.e * ni * B0 * ve  # Momentum electrons azimuthal
 
-# @njit
+@njit
 def simpson(y, x):
     n = len(y)
     if n % 2 == 0:
@@ -378,7 +382,7 @@ def simpson(y, x):
 
 # Compute the Current
 # @njit
-def compute_I(P, V):
+def compute_I(P, V, compt=0):
     # TODO: This is already computed! Maybe move to the source
     #############################################################
     #       We give a name to the vars to make it more readable
@@ -389,7 +393,6 @@ def compute_I(P, V):
     Te = P[3, :]
     ve = P[4, :]
     Ue_y = P[5, :]
-
     Gamma_i = ni * ui
     wce = phy_const.e * B0 / m  # electron cyclotron frequency
 
@@ -414,6 +417,7 @@ def compute_I(P, V):
     # Electron momentum - transfer collision frequency
     nu_m = ng * Kel + alpha_B * wce + nu_ew
 
+    # Ue_y = phy_const.e * B0 * ve / (phy_const.m_e * nu_m)  # Ue_y = ve * B0 / m_e
     div_p = gradient(ni * Te, d=Delta_x)
 
     Term_1 = Ue_y * B0 + phy_const.m_e / phy_const.e * nu_m * ui + div_p / (ni)
@@ -432,7 +436,8 @@ def compute_I(P, V):
             else:
                 phi_anode = Te_anode * np.log(- Ce / (4 * Uze))
         except:
-            print("Error in computing phi_anode: Ce = {}, Uze = {}".format(Ce, Uze))
+            # print("Error in computing phi_anode: Ce = {}, Uze = {}".format(Ce, Uze))
+            pass
         # print("phi_anode = {:.2f} V".format(phi_anode))
         V_a = V - phi_anode  # Adjust the voltage by the anode potential
     else:
@@ -440,14 +445,13 @@ def compute_I(P, V):
 
     top = V_a + value_simpson_1
 
-    Term_2 = (phy_const.m_e * wce**2) / (phy_const.e * nu_m * ni)
+    Term_2 = (phy_const.m_e * nu_m) / (phy_const.e * ni)
     value_simpson_2 = simpson(Term_2, x_center)
     bottom = phy_const.e * A0 * Rext + value_simpson_2
 
-    I0 = top / bottom  # Discharge current density
+    I01 = top / bottom  # Discharge current density
 
-    # print("J0 = {:.2e} A/m^2".format(I0))
-
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     mu_eff = (phy_const.e / (m * nu_m)) * (
         1.0 / (1 + (wce / nu_m) ** 2)
     )  # Effective mobility
@@ -482,7 +486,8 @@ def compute_I(P, V):
             else:
                 phi_anode = Te_anode * np.log(- Ce / (4 * Uze))
         except:
-            print("Error in computing phi_anode: Ce = {}, Uze = {}".format(Ce, Uze))
+            pass
+            # print("Error in computing phi_anode: Ce = {}, Uze = {}".format(Ce, Uze))
         # print("phi_anode = {:.2f} V".format(phi_anode))
         V_a = V - phi_anode  # Adjust the voltage by the anode potential
     else:
@@ -494,7 +499,14 @@ def compute_I(P, V):
     )
     bottom = phy_const.e * A0 * Rext + value_trapz_2
 
-    I0 = top / bottom  # Discharge current density
+    I02 = top / bottom  # Discharge current density
+
+    print("I01 = {:.2e} A, I02 = {:.2e} A".format(I01 * phy_const.e * A0, I02 * phy_const.e * A0))
+
+    if compt > 10000:
+        I0 = I01
+    else:
+        I0 = I02
 
     return I0 * phy_const.e * A0
 
@@ -736,6 +748,10 @@ if TIMESCHEME == "TVDRK3":
                 "\t Time = {:.4f} µs".format(time * 1e6),
                 "\t J = {:.4f} A".format(J),
                 "\t V = {:.4f} V".format(V),
+                "\t max(Te) = {:.4f} eV".format(np.max(P[3, :])),
+                "\t max(ni) = {:.0e} m^-3".format(np.max(P[1, :])),
+                "\t max(ui) = {:.0f} m/s".format(np.max(P[2, :])),
+                "\t max(ng) = {:.0e} m^-3".format(np.max(P[0, :])),
             )
             if iter == 5:
                 sys.exit(1)

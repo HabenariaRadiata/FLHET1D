@@ -22,7 +22,7 @@ from modules.simu_params import SimuParameters
 # F = [rhog*Vg, rhoUi, rhoUi*Ui + ne*e*Te, 5/2 ne*e*Te*Ue].
 #
 # We use the following primitive variables
-# P = [ng, ni,  ui,  Te, ve_x, ve_y]
+# P = [ng, ni, ui, Te, ve_x, ve_y]
 #
 # At the boundaries we impose
 # Inlet:
