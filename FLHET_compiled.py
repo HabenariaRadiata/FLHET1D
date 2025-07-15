@@ -513,7 +513,7 @@ def compute_I(P, V):
 @njit
 def SetInlet(P_In, U_ghost, P_ghost, J=0.0, moment=1):
 
-    U_Bohm = np.sqrt(phy_const.e * P_In[3] / M)
+    U_Bohm = np.sqrt(5 * phy_const.e * P_In[3] / (3*M))
 
     if P_In[1] * P_In[2] < 0.0:
         U_ghost[0] = (mdot - M * P_In[1] * P_In[2] * A0) / (A0 * VG)
@@ -554,7 +554,7 @@ def SetOutlet(P_In, U_ghost, P_ghost, J=0.0):
 @njit
 def computeMaxEigenVal_e(P):
 
-    U_Bohm = np.sqrt(phy_const.e * P[3, :] / M)
+    U_Bohm = np.sqrt(5 * phy_const.e * P[3, :] / (3 * M))
 
     return np.maximum(np.abs(U_Bohm - P[4, :]) * 2, np.abs(U_Bohm + P[4, :]) * 2)
 
@@ -562,7 +562,7 @@ def computeMaxEigenVal_e(P):
 @njit
 def computeMaxEigenVal_i(P):
 
-    U_Bohm = np.sqrt(phy_const.e * P[3, :] / M)
+    U_Bohm = np.sqrt(5 * phy_const.e * P[3, :] / (3 * M))
 
     # return [max(l1, l2) for l1, l2 in zip(abs(U_Bohm - P[2,:]), abs(U_Bohm + P[2,:]))]
     return np.maximum(np.abs(U_Bohm - P[2, :]), np.abs(U_Bohm + P[2, :]))
