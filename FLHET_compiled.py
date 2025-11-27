@@ -495,7 +495,7 @@ def compute_I(P, V):
                 phi_anode = Te_anode * np.log(- Ce / (4 * Uze))
         except:
             print("Error in computing phi_anode: Ce = {}, Uze = {}".format(Ce, Uze))
-        print("phi_anode = {:.2f} V".format(phi_anode))
+        # print("phi_anode = {:.2f} V".format(phi_anode))
         V_a = V - phi_anode  # Adjust the voltage by the anode potential
     else:
         V_a = V
