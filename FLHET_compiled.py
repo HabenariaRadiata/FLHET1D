@@ -57,7 +57,10 @@ alpha_B1 = float(physicalParameters["Anomalous transport alpha_B1"])  # Anomalou
 alpha_B2 = float(physicalParameters["Anomalous transport alpha_B2"])  # Anomalous transport
 mdot     = float(physicalParameters["Mass flow"])                     # Mass flow rate of propellant
 Te_Cath  = float(physicalParameters["Temperature Cathode"])           # Electron temperature at the cathode
-NI0      = float(physicalParameters["Initial plasma density"])  
+NI0      = float(physicalParameters["Initial plasma density"])
+XI1      = float(physicalParameters["Initial fraction singly"])
+XI2_02   = float(physicalParameters["Initial fraction doubly 02"])        
+XI2_12   = float(physicalParameters["Initial fraction doubly 12"])        
 TE0      = float(physicalParameters["Initial Temperature"])  
 Rext     = float(physicalParameters["Ballast resistor"])              # Resistor of the ballast
 V        = float(physicalParameters["Voltage"])                       # Potential difference
@@ -125,19 +128,18 @@ for index in range(10, NBPOINTS - 9):
 alpha_B = alpha_B_smooth
 
 # Allocation of vectors
-P = np.ones((5, NBPOINTS))              # Primitive vars P = [ng, ni, ui,  Te, ve] TODO: maybe add , E
-U = np.ones((4, NBPOINTS))              # Conservative vars U = [rhog, rhoi, rhoUi, 3/2 ne*e*Te]
-S = np.ones((4, NBPOINTS))              # Source Term
-F_cell = np.ones((4, NBPOINTS + 2))     # Flux at the cell center. We include the Flux of the Ghost cells
-F_interf = np.ones((4, NBPOINTS + 1))   # Flux at the interface
-U_Inlet = np.ones((4, 1))               # Ghost cell on the left
-P_Inlet = np.ones((5, 1))               # Ghost cell on the left
-U_Outlet = np.ones((4, 1))              # Ghost cell on the right
-P_Outlet = np.ones((5, 1))              # Ghost cell on the right
+P = np.ones((9, NBPOINTS))              # Primitive vars P = [ng, n1, n02, n12, ui, v02, v12, Te, ve] TODO: maybe add , E
+U = np.ones((8, NBPOINTS))              # Conservative vars U = [rhog, rho1, rho02, rho12, rhoU1, rhoU02, rhoU12, 3/2 ne*e*Te]
+S = np.ones((8, NBPOINTS))              # Source Term
+F_cell = np.ones((8, NBPOINTS + 2))     # Flux at the cell center. We include the Flux of the Ghost cells
+F_interf = np.ones((8, NBPOINTS + 1))   # Flux at the interface
+U_Inlet = np.ones((8, 1))               # Ghost cell on the left
+P_Inlet = np.ones((9, 1))               # Ghost cell on the left
+U_Outlet = np.ones((8, 1))              # Ghost cell on the right
+P_Outlet = np.ones((9, 1))              # Ghost cell on the right
 if TIMESCHEME == "TVDRK3":
-    P_1 = np.ones((5, NBPOINTS))        # Primitive vars P = [ng, ni, ui,  Te, ve] TODO: maybe add , E
-    U_1 = np.ones((4, NBPOINTS))        # Conservative vars U = [rhog, rhoi, rhoUi,
-
+    P_1 = np.ones((9, NBPOINTS))        # Primitive vars P = [ng, n1, n02, n12, ui, v02, v12, Te, ve] TODO: maybe add , E
+    U_1 = np.ones((8, NBPOINTS))        # Conservative vars U = [rhog, rho1, rho02, rho12, rhoU1, rhoU02, rhoU12, 3/2 ne*e*Te]
 if Circuit:
     R = float(physicalParameters["R"])
     L = float(physicalParameters["L"])
@@ -188,28 +190,44 @@ if saveBField:
 @njit
 def PrimToCons(P, U):
     U[0, :] = P[0, :] * M  # rhog
-    U[1, :] = P[1, :] * M  # rhoi
-    U[2, :] = P[2, :] * P[1, :] * M  # rhoiUi
-    U[3, :] = 3.0 / 2.0 * P[1, :] * phy_const.e * P[3, :]  # 3/2*ni*e*Te
+    U[1, :] = P[1, :] * M  # rho1
+    U[2, :] = P[2, :] * M  # rho02
+    U[3, :] = P[3, :] * M  # rho12
+    U[4, :] = P[4, :] * P[1, :] * M  # rhoU1
+    U[5, :] = P[5, :] * P[2, :] * M  # rhoU02
+    U[6, :] = P[6, :] * P[3, :] * M  # rhoU12
+    U[7, :] = 3.0 / 2.0 * (P[1, :]+2*(P[2, :]+P[3, :])) * phy_const.e * P[7, :]  # 3/2*ni*e*Te
 
 
 @njit
 def ConsToPrim(U, P, J=0.0):
     P[0, :] = U[0, :] / M  # ng
-    P[1, :] = U[1, :] / M  # ni
-    P[2, :] = U[2, :] / U[1, :]  # Ui = rhoUi/rhoi
-    P[3, :] = 2.0 / 3.0 * U[3, :] / (phy_const.e * P[1, :])  # Te
-    P[4, :] = P[2, :] - J / (A0 * phy_const.e * P[1, :])  # ve
+    P[1, :] = U[1, :] / M  # n1
+    P[2, :] = U[2, :] / M  # n02
+    P[3, :] = U[3, :] / M  # n12
+    P[4, :] = U[4, :] / U[1, :]  # U1 = rhoU1/rho1
+    P[5, :] = U[5, :] / U[2, :]  # U02 = rhoU02/rho02
+    P[6, :] = U[6, :] / U[3, :]  # U12 = rhoU12/rho12
 
+    P[7, :] = 2.0 / 3.0 * U[7, :] / (phy_const.e * (P[1, :] + 2*(P[2, :] + P[3, :])))  # Te
+    P[8, :] = (P[4, :]+2*(P[5, :]+P[6, :])) - J / (A0 * phy_const.e * (P[1, :] + 2*(P[2, :] + P[3, :])))  # ve
 
 @njit
 def InviscidFlux(P, F):
     F[0, :] = P[0, :] * VG * M  # rho_g*v_g
-    F[1, :] = P[1, :] * P[2, :] * M  # rho_i*v_i
-    F[2, :] = (
-        M * P[1, :] * P[2, :] * P[2, :] + P[1, :] * phy_const.e * P[3, :]
-    )  # M*n_i*v_i**2 + p_e
-    F[3, :] = 5.0 / 2.0 * P[1, :] * phy_const.e * P[3, :] * P[4, :]  # 5/2n_i*e*T_e*v_e
+    F[1, :] = P[1, :] * P[4, :] * M  # rho_i*v_i
+    F[2, :] = P[2, :] * P[5, :] * M  # rho_02*v_02
+    F[3, :] = P[3, :] * P[6, :] * M  # rho_12*v_12
+    F[4, :] = (
+        M * P[1, :] * P[4, :] * P[4, :] + P[1,:]/(P[1, :]+2*(P[2, :] + P[3, :])) * phy_const.e * P[7, :]
+    )  # M*n_1*v_1**2 + 1*n1/(n1+2*(n02+n12))*p_e
+    F[5, :] = (
+        M * P[2, :] * P[5, :] * P[5, :] + 2*P[2,:]/(P[1, :]+2*(P[2, :] + P[3, :])) * phy_const.e * P[7, :]
+    )  # M*n_02*v_02**2 + 2*n02/(n1+2*(n02+n12))*p_e
+    F[6, :] = (
+        M * P[3, :] * P[6, :] * P[6, :] + 2*P[3,:]/(P[1, :]+2*(P[2, :] + P[3, :])) * phy_const.e * P[7, :]
+    )  # M*n_12*v_12**2 + 2*n12/(n1+2*(n02+n12))*p_e
+    F[7, :] = 5.0 / 2.0 * (P[1, :]+2*(P[2, :]+P[3,:])) * phy_const.e * P[7, :] * P[8, :]  # 5/2n_i*e*T_e*v_e
 
 @njit
 def gradient(y, d):
@@ -237,7 +255,7 @@ def Source(P, S):
     #     return 16./3.*a*t**f*np.exp(-b*t+ c*t**2 - d*t**3. + e*t**4)
     
     def compute_Kel(Te):
-        """This function calculates the ionization rate"""
+        """This function calculates the elastic scattering rate"""
         # Polynomial coefficients
         c0 = -3.04474930e+01
         c1 = 1.89683694e+00
@@ -260,17 +278,37 @@ def Source(P, S):
         # Return the exponential of the polynomial result
         return np.exp(result)
     
-    def compute_Kiz(Te):
-        # Xenon ionization
-        K0      = 1.18122959e-13
-        epsilon = 12.13
-        A       = 1.29330521e-01
-        B       = 1.00068880e-02
-        C       = 6.97445869e-01
+    def compute_K01(Te):
+        # Xenon single neutral ionization
+        K0      = 3.713250982402397e-14
+        epsilon = -0.8074961922061281
+        A       = -0.0017611280968783634
+        B       = 0.017611683126543775
+        C       = 0.963776819737781
 
         return K0*np.exp(-epsilon/Te)*(np.log(1 + A*Te + B*Te**2))**C
     
-    def computeEpsilonLoss(Te):
+    def compute_K02(Te):
+        # Xenon double neutral ionization
+        K0      = 2.9877259773209294e-15
+        epsilon = 2.279306890331026
+        A       = -0.0010349058788903616
+        B       = 0.010351220959387678
+        C       = 0.9986740377564686
+
+        return K0*np.exp(-epsilon/Te)*(np.log(1 + A*Te + B*Te**2))**C
+
+    def compute_K12(Te):
+        # Xenon single singly charged ion ionization
+        K0      = 9.071260705344802e-14
+        epsilon = 25.626785037399753
+        A       = -0.000026061685061096907
+        B       = 0.0002606327354438319
+        C       = -0.05673357419589643
+
+        return K0*np.exp(-epsilon/Te)*(np.log(1 + A*Te + B*Te**2))**C
+    
+    def computeEpsilonLoss01(Te):
         def computeKprocess(Te, K0, epsilon, A, B, C):
             arg = 1 + A * Te + B * Te**2
             arg = np.maximum(arg, 1.0)  # Ensure all values are >= 1
@@ -278,25 +316,62 @@ def Source(P, S):
             #     arg = 1.0
             return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
         
-        K_iz  = computeKprocess(Te, 1.18122959e-13, 12.13, 1.29330521e-01, 1.00068880e-02, 6.97445869e-01)
+        K_01 = computeKprocess(Te, 3.713250982402397e-14, 12.13, -0.0017611280968783634, 0.017611683126543775, 0.963776819737781)
         K_ex1 = computeKprocess(Te, 2.37016128e-14, 8.315, 7.99682247e-02, -5.91358673e-04, 4.51997276e-01)
         K_ex2 = computeKprocess(Te, 9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
         K_ex3 = computeKprocess(Te, 1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
         K_ex4 = computeKprocess(Te, 7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
 
-        return 12.13 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70)/K_iz + 3*m/M*compute_Kel(Te)*Te/K_iz
+        return 12.13 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70 + 3*m/M*compute_Kel(Te)*Te) / (K_01)
+    
+    def computeEpsilonLoss02(Te):
+        def computeKprocess(Te, K0, epsilon, A, B, C):
+            arg = 1 + A * Te + B * Te**2
+            arg = np.maximum(arg, 1.0)  # Ensure all values are >= 1
+            # if np.any(arg <= 1):
+            #     arg = 1.0
+            return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
+        
+        K_02 = computeKprocess(Te, 2.9877259773209294e-15, 33.1, -0.0010349058788903616, 0.010351220959387678, 0.9986740377564686)
+        K_ex1 = computeKprocess(Te, 2.37016128e-14, 8.315, 7.99682247e-02, -5.91358673e-04, 4.51997276e-01)
+        K_ex2 = computeKprocess(Te, 9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
+        K_ex3 = computeKprocess(Te, 1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
+        K_ex4 = computeKprocess(Te, 7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
+
+        return 33.1/2 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70 + 3*m/M*compute_Kel(Te)*Te) / (2*K_02)
+    
+    def computeEpsilonLoss12(Te):
+        def computeKprocess(Te, K0, epsilon, A, B, C):
+            arg = 1 + A * Te + B * Te**2
+            arg = np.maximum(arg, 1.0)  # Ensure all values are >= 1
+            # if np.any(arg <= 1):
+            #     arg = 1.0
+            return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
+        
+        K_12 = computeKprocess(Te, 9.071260705344802e-14, 20.975, -0.000026061685061096907, 0.0002606327354438319, -0.05673357419589643)
+        K_ex1 = computeKprocess(Te, 2.37016128e-14, 8.315, 7.99682247e-02, -5.91358673e-04, 4.51997276e-01)
+        K_ex2 = computeKprocess(Te, 9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
+        K_ex3 = computeKprocess(Te, 1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
+        K_ex4 = computeKprocess(Te, 7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
+
+        return 20.975 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70 + 3*m/M*compute_Kel(Te)*Te) / (K_12)
+
 
 
     #############################################################
     #       We give a name to the vars to make it more readable
     #############################################################
     ng = P[0, :]
-    ni = P[1, :]
-    ui = P[2, :]
-    Te = P[3, :]
-    ve = P[4, :]
+    n1 = P[1, :]
+    n02 = P[2, :]
+    n12 = P[3, :]
+    u1 = P[4, :]
+    u02 = P[5, :]
+    u12 = P[6, :]
+    Te = P[7, :]
+    ve = P[8, :]
 
-    energy = 3.0 / 2.0 * ni * phy_const.e * Te  # Electron internal energy
+    energy = 3.0 / 2.0 * (n1+2*(n02+n12)) * phy_const.e * Te  # Electron internal energy
     # Gamma_E = 3./2.*ni*phy_const.e*Te*ve    # Flux of internal energy
     wce = phy_const.e * B0 / m  # electron cyclotron frequency
 
@@ -304,8 +379,12 @@ def Source(P, S):
     #       Compute the rates   #
     #############################
     Kel = compute_Kel(Te)  # Electron - neutral  collision rate     
-    Kiz = compute_Kiz(Te)
-    epsilonLoss = computeEpsilonLoss(Te)
+    K01 = compute_K01(Te)
+    K02 = compute_K02(Te)
+    K12 = compute_K12(Te)
+    epsilonLoss01 = computeEpsilonLoss01(Te)
+    epsilonLoss02 = computeEpsilonLoss02(Te)
+    epsilonLoss12 = computeEpsilonLoss12(Te)
 
 
     ############################
@@ -358,23 +437,40 @@ def Source(P, S):
     mu_eff = (phy_const.e / (m * nu_m)) * (1.0 / (1 + (wce / nu_m) ** 2))  # Effective mobility
 
     div_p = gradient(
-        phy_const.e * ni * Te, d=Delta_x
+        phy_const.e * ((n1+2*(n02+n12)) * Te), d=Delta_x
     )  # To be used with 5./2 and + div_p*ve below
 
-    S[0, :] = (-ng[:] * ni[:] * Kiz[:] + nu_iw[:] * ni[:]) * M  # Gas Density
-    S[1, :] = (ng[:] * ni[:] * Kiz[:] - nu_iw[:] * ni[:]) * M  # Ion Density
-    S[2, :] = (
-        ng[:] * ni[:] * Kiz[:] * VG
-        - (phy_const.e / (mu_eff[:] * M)) * ni[:] * ve[:]
-        - nu_iw[:] * ni[:] * ui[:]
-    ) * M  # Momentum
-    S[3, :] = (
-        - ng[:] * ni[:] * Kiz[:] * epsilonLoss[:] * phy_const.e
-        - nu_ew[:] * ni[:] * Ew * phy_const.e
-        + ni[:] / mu_eff[:] * (ve[:]) ** 2.0 * phy_const.e
-        + div_p * ve
-    )  # + phy_const.e*ni*Te*div_u  #- gradI_term*ni*Te*grdI          # Energy
+    # Continuity
+    S[0, :] = (-ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K01[:] - ng[:] * (n1[:]+ 2*(n02[:]+n12[:])) * K02[:] + nu_iw[:] * (n1[:]+2*(n02[:]+n12[:]))) * M  # Gas Density
+    S[1, :] = (ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K01[:] - n1[:] * (n1[:] + 2*(n02[:]+n12[:])) * K12[:] - nu_iw[:] * (n1[:]+2*(n02[:]+n12[:]))) * M  # Singly Ion Density
+    S[2, :] = (ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K02[:]) * M # Doubly Ion Density
+    S[3, :] = (n1[:] * (n1[:] + 2*(n02[:]+n12[:])) * K12[:]) * M # Doubly Ion Density
 
+    # Momentum - MISSING pressure p dx(Zk nk/ne)
+    S[4, :] = (
+        ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K01[:] * VG
+        - n1[:] * (n1[:] + 2*(n02[:]+n12[:])) * K12[:] * u1[:]
+        - (phy_const.e / (mu_eff[:] * M)) * n1[:] * ve[:]
+        - nu_iw[:] * (n1[:]+2*(n02[:]+n12[:])) * u1[:]
+    ) * M  # Singly Ion Momentum
+    S[5, :] = (
+        ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K02[:] * VG
+        - (phy_const.e / (mu_eff[:] * M)) * 2*n02[:] * ve[:]
+    ) * M  # Doubly Ion Momentum
+    S[6, :] = (
+        n1[:] * (n1[:] + 2*(n02[:]+n12[:])) * K12[:] * u1[:]
+        - (phy_const.e / (mu_eff[:] * M)) * 2*n12[:] * ve[:]
+    ) * M  # Doubly Ion Momentum
+
+    # Energy
+    S[7, :] = (
+        - ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K01[:] * epsilonLoss01[:] * phy_const.e
+        - ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K02[:] * epsilonLoss02[:] * phy_const.e
+        - n1[:] * (n1[:] + 2*(n02[:]+n12[:])) * K12[:] * epsilonLoss12[:] * phy_const.e
+        - nu_ew[:] * (n1[:]+2*(n02[:]+n12[:])) * Ew * phy_const.e
+        + (n1[:] + 2*(n02[:] + n12[:])) / mu_eff[:] * (ve[:]) ** 2.0 * phy_const.e
+        + div_p * ve
+    )
 
 # Compute the Current
 # @njit
@@ -419,11 +515,18 @@ def compute_I(P, V):
     #       We give a name to the vars to make it more readable
     #############################################################
     ng = P[0, :]
-    ni = P[1, :]
-    ui = P[2, :]
-    Te = P[3, :]
-    ve = P[4, :]
-    Gamma_i = ni * ui
+    n1 = P[1, :]
+    n02 = P[2, :]
+    n12 = P[3, :]
+    ne = n1 + 2*(n02 + n12)
+    u1 = P[4, :]
+    u02 = P[5, :]
+    u12 = P[6, :]
+    Te = P[7, :]
+    ve = P[8, :]
+    Gamma_1 = n1 * u1
+    Gamma_02 = n02 * u02
+    Gamma_12 = n12 * u12
     wce = phy_const.e * B0 / m  # electron cyclotron frequency
 
     #############################
@@ -464,17 +567,17 @@ def compute_I(P, V):
         1.0 / (1 + (wce / nu_m) ** 2)
     )  # Effective mobility
 
-    dp_dz = np.empty_like(ni * Te)
+    dp_dz = np.empty_like(ne * Te)
 
-    dp_dz[1:-1] = ((ni * Te)[2:] - (ni * Te)[:-2]) / (2 * Delta_x)
+    dp_dz[1:-1] = ((ne * Te)[2:] - (ne * Te)[:-2]) / (2 * Delta_x)
     dp_dz[0] = 2 * dp_dz[1] - dp_dz[2]
     dp_dz[-1] = 2 * dp_dz[-2] - dp_dz[-3]
 
     value_trapz_1 = (
         np.sum(
             (
-                ((Gamma_i / (mu_eff * ni)) + dp_dz / ni)[1:]
-                + ((Gamma_i / (mu_eff * ni)) + dp_dz / ni)[:-1]
+                (((Gamma_1 + 2*(Gamma_02+Gamma_12)) / (mu_eff * ne)) + dp_dz / ne)[1:]
+                + (((Gamma_1 + 2*(Gamma_02+Gamma_12)) / (mu_eff * ne)) + dp_dz / ne)[:-1]
             )
         )
         * Delta_x
@@ -502,7 +605,7 @@ def compute_I(P, V):
     top = V_a + value_trapz_1
 
     value_trapz_2 = (
-        np.sum(((1.0 / (mu_eff * ni))[1:] + (1.0 / (mu_eff * ni))[:-1])) * Delta_x / 2.0
+        np.sum(((1.0 / (mu_eff * ne))[1:] + (1.0 / (mu_eff * ne))[:-1])) * Delta_x / 2.0
     )
     bottom = phy_const.e * A0 * Rext + value_trapz_2
 
@@ -513,21 +616,45 @@ def compute_I(P, V):
 @njit
 def SetInlet(P_In, U_ghost, P_ghost, J=0.0, moment=1):
 
-    U_Bohm = np.sqrt(5 * phy_const.e * P_In[3] / (3*M))
+    U_Bohm1 = np.sqrt(5 * phy_const.e * P_In[4] / (3*M))
+    U_Bohm02 = np.sqrt(2)*np.sqrt(5 * phy_const.e * P_In[5] / (3*M))
+    U_Bohm12 = np.sqrt(2)*np.sqrt(5 * phy_const.e * P_In[6] / (3*M))
 
-    if P_In[1] * P_In[2] < 0.0:
-        U_ghost[0] = (mdot - M * P_In[1] * P_In[2] * A0) / (A0 * VG)
+    if P_In[1] * P_In[4] < 0.0:
+        U_ghost[0] = (mdot - M * P_In[1] * P_In[4] * A0) / (A0 * VG)
     else:
         U_ghost[0] = mdot / (A0 * VG)
+
+    if P_In[2] * P_In[5] < 0.0:
+        U_ghost[0] = (mdot - M * P_In[2] * P_In[5] * A0) / (A0 * VG)
+    else:
+        U_ghost[0] = mdot / (A0 * VG)
+
+    if P_In[3] * P_In[6] < 0.0:
+        U_ghost[0] = (mdot - M * P_In[3] * P_In[6] * A0) / (A0 * VG)
+    else:
+        U_ghost[0] = mdot / (A0 * VG)
+
     U_ghost[1] = P_In[1] * M
-    U_ghost[2] = -2.0 * P_In[1] * U_Bohm * M - P_In[1] * P_In[2] * M
-    U_ghost[3] = 3.0 / 2.0 * P_In[1] * phy_const.e * P_In[3]
+    U_ghost[2] = P_In[2] * M
+    U_ghost[3] = P_In[3] * M
+
+    U_ghost[4] = -2.0 * P_In[1] * U_Bohm1 * M - P_In[1] * P_In[4] * M
+    U_ghost[5] = -2.0 * P_In[2] * U_Bohm1 * M - P_In[2] * P_In[5] * M
+    U_ghost[6] = -2.0 * P_In[3] * U_Bohm1 * M - P_In[3] * P_In[6] * M
+
+    U_ghost[7] = 3.0 / 2.0 * (P_In[1]+2*P_In[2]+P_In[3]) * phy_const.e * P_In[7]
 
     P_ghost[0] = U_ghost[0] / M  # ng
-    P_ghost[1] = U_ghost[1] / M  # ni
-    P_ghost[2] = U_ghost[2] / U_ghost[1]  # Ui
-    P_ghost[3] = 2.0 / 3.0 * U_ghost[3] / (phy_const.e * P_ghost[1])  # Te
-    P_ghost[4] = P_ghost[2] - J / (A0 * phy_const.e * P_ghost[1])  # ve
+    P_ghost[1] = U_ghost[1] / M  # n1
+    P_ghost[2] = U_ghost[2] / M  # n02
+    P_ghost[3] = U_ghost[3] / M  # n12
+
+    P_ghost[4] = U_ghost[4] / U_ghost[1]  # U1
+    P_ghost[5] = U_ghost[5] / U_ghost[2]  # U02
+    P_ghost[6] = U_ghost[6] / U_ghost[3]  # U12
+    P_ghost[7] = 2.0 / 3.0 * U_ghost[7] / (phy_const.e * (P_ghost[1]+2*P_ghost[2]+P_ghost[3]))  # Te
+    P_ghost[8] = (P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6])) - J / (A0 * phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # ve
 
 
 @njit
@@ -535,14 +662,22 @@ def SetOutlet(P_In, U_ghost, P_ghost, J=0.0):
 
     U_ghost[0] = P_In[0] * M
     U_ghost[1] = P_In[1] * M
-    U_ghost[2] = P_In[1] * P_In[2] * M
-    U_ghost[3] = 3.0 / 2.0 * P_In[1] * phy_const.e * Te_Cath
+    U_ghost[2] = P_In[2] * M
+    U_ghost[3] = P_In[3] * M
+    U_ghost[4] = P_In[1] * P_In[4] * M
+    U_ghost[5] = P_In[2] * P_In[5] * M
+    U_ghost[6] = P_In[3] * P_In[6] * M
+    U_ghost[7] = 3.0 / 2.0 * (P_In[1] + 2*(P_In[2]+P_In[3])) * phy_const.e * Te_Cath
 
     P_ghost[0] = U_ghost[0] / M  # ng
-    P_ghost[1] = U_ghost[1] / M  # ni
-    P_ghost[2] = U_ghost[2] / U_ghost[1]  # Ui
-    P_ghost[3] = 2.0 / 3.0 * U_ghost[3] / (phy_const.e * P_ghost[1])  # Te
-    P_ghost[4] = P_ghost[2] - J / (A0 * phy_const.e * P_ghost[1])  # ve
+    P_ghost[1] = U_ghost[1] / M  # n1
+    P_ghost[2] = U_ghost[2] / M  # n02
+    P_ghost[3] = U_ghost[3] / M  # n12
+    P_ghost[4] = U_ghost[4] / U_ghost[1]  # U1
+    P_ghost[5] = U_ghost[5] / U_ghost[2]  # U02
+    P_ghost[6] = U_ghost[6] / U_ghost[3]  # U12
+    P_ghost[7] = 2.0 / 3.0 * U_ghost[7] / (phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # Te
+    P_ghost[8] = (P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6])) - J / (A0 * phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # ve
 
 
 ##########################################################
@@ -554,59 +689,113 @@ def SetOutlet(P_In, U_ghost, P_ghost, J=0.0):
 @njit
 def computeMaxEigenVal_e(P):
 
-    U_Bohm = np.sqrt(5 * phy_const.e * P[3, :] / (3 * M))
+    U_Bohm = np.sqrt(5 * phy_const.e * P[7, :] / (3 * M))
 
-    return np.maximum(np.abs(U_Bohm - P[4, :]) * 2, np.abs(U_Bohm + P[4, :]) * 2)
+    return np.maximum(np.abs(U_Bohm - P[8, :]) * 2, np.abs(U_Bohm + P[8, :]) * 2)
 
 
 @njit
-def computeMaxEigenVal_i(P):
+def computeMaxEigenVal_i1(P):
 
-    U_Bohm = np.sqrt(5 * phy_const.e * P[3, :] / (3 * M))
+    U_Bohm = np.sqrt(5 * phy_const.e * P[7, :] / (3 * M))
 
     # return [max(l1, l2) for l1, l2 in zip(abs(U_Bohm - P[2,:]), abs(U_Bohm + P[2,:]))]
-    return np.maximum(np.abs(U_Bohm - P[2, :]), np.abs(U_Bohm + P[2, :]))
+    return np.maximum(np.abs(U_Bohm - P[4, :]), np.abs(U_Bohm + P[4, :]))
+
+
+@njit
+def computeMaxEigenVal_i02(P):
+
+    U_Bohm = np.sqrt(5 * phy_const.e * P[7, :] / (3 * M))
+
+    # return [max(l1, l2) for l1, l2 in zip(abs(U_Bohm - P[2,:]), abs(U_Bohm + P[2,:]))]
+    return np.maximum(np.abs(U_Bohm - P[5, :]), np.abs(U_Bohm + P[5, :]))
+
+
+@njit
+def computeMaxEigenVal_i12(P):
+
+    U_Bohm = np.sqrt(5 * phy_const.e * P[7, :] / (3 * M))
+
+    # return [max(l1, l2) for l1, l2 in zip(abs(U_Bohm - P[2,:]), abs(U_Bohm + P[2,:]))]
+    return np.maximum(np.abs(U_Bohm - P[6, :]), np.abs(U_Bohm + P[6, :]))
 
 
 @njit
 def NumericalFlux(P, U, F_cell, F_interf):
 
     # Compute the max eigenvalue
-    lambda_max_i_R = computeMaxEigenVal_i(P[:, 1 : NBPOINTS + 2])
-    lambda_max_i_L = computeMaxEigenVal_i(P[:, 0 : NBPOINTS + 1])
-    lambda_max_i_12 = np.maximum(lambda_max_i_L, lambda_max_i_R)
+    lambda_max_i1_R = computeMaxEigenVal_i1(P[:, 1 : NBPOINTS + 2])
+    lambda_max_i1_L = computeMaxEigenVal_i1(P[:, 0 : NBPOINTS + 1])
+    lambda_max_i1_star = np.maximum(lambda_max_i1_L, lambda_max_i1_R)
+
+    lambda_max_i02_R = computeMaxEigenVal_i02(P[:, 1 : NBPOINTS + 2])
+    lambda_max_i02_L = computeMaxEigenVal_i02(P[:, 0 : NBPOINTS + 1])
+    lambda_max_i02_star = np.maximum(lambda_max_i02_L, lambda_max_i02_R)
+
+    lambda_max_i12_R = computeMaxEigenVal_i12(P[:, 1 : NBPOINTS + 2])
+    lambda_max_i12_L = computeMaxEigenVal_i12(P[:, 0 : NBPOINTS + 1])
+    lambda_max_i12_star = np.maximum(lambda_max_i12_L, lambda_max_i12_R)
 
     lambda_max_e_R = computeMaxEigenVal_e(P[:, 1 : NBPOINTS + 2])
     lambda_max_e_L = computeMaxEigenVal_e(P[:, 0 : NBPOINTS + 1])
-    lambda_max_e_12 = np.maximum(lambda_max_e_L, lambda_max_e_R)
+    lambda_max_e_star = np.maximum(lambda_max_e_L, lambda_max_e_R)
 
     # Compute the flux at the interface
+
+    # Neutrals continuity
     F_interf[0, :] = 0.5 * (
         F_cell[0, 0 : NBPOINTS + 1] + F_cell[0, 1 : NBPOINTS + 2]
     ) - 0.5 * VG * (U[0, 1 : NBPOINTS + 2] - U[0, 0 : NBPOINTS + 1])
+
+    # Ions continuity
     F_interf[1, :] = 0.5 * (
         F_cell[1, 0 : NBPOINTS + 1] + F_cell[1, 1 : NBPOINTS + 2]
-    ) - 0.5 * lambda_max_i_12 * (U[1, 1 : NBPOINTS + 2] - U[1, 0 : NBPOINTS + 1])
+    ) - 0.5 * lambda_max_i1_star * (U[1, 1 : NBPOINTS + 2] - U[1, 0 : NBPOINTS + 1])
     F_interf[2, :] = 0.5 * (
         F_cell[2, 0 : NBPOINTS + 1] + F_cell[2, 1 : NBPOINTS + 2]
-    ) - 0.5 * lambda_max_i_12 * (U[2, 1 : NBPOINTS + 2] - U[2, 0 : NBPOINTS + 1])
+    ) - 0.5 * lambda_max_i02_star * (U[2, 1 : NBPOINTS + 2] - U[2, 0 : NBPOINTS + 1])
     F_interf[3, :] = 0.5 * (
         F_cell[3, 0 : NBPOINTS + 1] + F_cell[3, 1 : NBPOINTS + 2]
-    ) - 0.5 * lambda_max_e_12 * (U[3, 1 : NBPOINTS + 2] - U[3, 0 : NBPOINTS + 1])
+    ) - 0.5 * lambda_max_i12_star * (U[3, 1 : NBPOINTS + 2] - U[3, 0 : NBPOINTS + 1])
+
+    # Ions momentum
+    F_interf[4, :] = 0.5 * (
+        F_cell[4, 0 : NBPOINTS + 1] + F_cell[4, 1 : NBPOINTS + 2]
+    ) - 0.5 * lambda_max_i1_star * (U[4, 1 : NBPOINTS + 2] - U[4, 0 : NBPOINTS + 1])
+    F_interf[5, :] = 0.5 * (
+        F_cell[5, 0 : NBPOINTS + 1] + F_cell[5, 1 : NBPOINTS + 2]
+    ) - 0.5 * lambda_max_i02_star * (U[5, 1 : NBPOINTS + 2] - U[5, 0 : NBPOINTS + 1])
+    F_interf[6, :] = 0.5 * (
+        F_cell[6, 0 : NBPOINTS + 1] + F_cell[6, 1 : NBPOINTS + 2]
+    ) - 0.5 * lambda_max_i12_star * (U[6, 1 : NBPOINTS + 2] - U[6, 0 : NBPOINTS + 1])
+
+    # Electrons
+    F_interf[7, :] = 0.5 * (
+        F_cell[7, 0 : NBPOINTS + 1] + F_cell[7, 1 : NBPOINTS + 2]
+    ) - 0.5 * lambda_max_e_star * (U[7, 1 : NBPOINTS + 2] - U[7, 0 : NBPOINTS + 1])
 
 
 @njit
 def ComputeDelta_t(P):
     # Compute the max eigenvalue
-    lambda_max_i_R = computeMaxEigenVal_i(P[:, 1 : NBPOINTS + 2])
-    lambda_max_i_L = computeMaxEigenVal_i(P[:, 0 : NBPOINTS + 1])
-    lambda_max_i_12 = np.maximum(lambda_max_i_L, lambda_max_i_R)
+    lambda_max_i1_R = computeMaxEigenVal_i1(P[:, 1 : NBPOINTS + 2])
+    lambda_max_i1_L = computeMaxEigenVal_i1(P[:, 0 : NBPOINTS + 1])
+    lambda_max_i1_star = np.maximum(lambda_max_i1_L, lambda_max_i1_R)
+
+    lambda_max_i02_R = computeMaxEigenVal_i02(P[:, 1 : NBPOINTS + 2])
+    lambda_max_i02_L = computeMaxEigenVal_i02(P[:, 0 : NBPOINTS + 1])
+    lambda_max_i02_star = np.maximum(lambda_max_i02_L, lambda_max_i02_R)
+
+    lambda_max_i12_R = computeMaxEigenVal_i12(P[:, 1 : NBPOINTS + 2])
+    lambda_max_i12_L = computeMaxEigenVal_i12(P[:, 0 : NBPOINTS + 1])
+    lambda_max_i12_star = np.maximum(lambda_max_i12_L, lambda_max_i12_R)
 
     lambda_max_e_R = computeMaxEigenVal_e(P[:, 1 : NBPOINTS + 2])
     lambda_max_e_L = computeMaxEigenVal_e(P[:, 0 : NBPOINTS + 1])
-    lambda_max_e_12 = np.maximum(lambda_max_e_L, lambda_max_e_R)
+    lambda_max_e_star = np.maximum(lambda_max_e_L, lambda_max_e_R)
 
-    Delta_t = CFL * Delta_x / (max(max(lambda_max_e_12), max(lambda_max_i_12)))
+    Delta_t = CFL * Delta_x / (max(max(lambda_max_e_star), max(lambda_max_i1_star), max(lambda_max_i02_star), max(lambda_max_i12_star)))
     return Delta_t
 
 
@@ -650,10 +839,14 @@ J = 0.0  # Initial Current
 
 # We initialize the primitive variables
 P[0, :] *= mdot / (M * A0 * VG)  # Initial propellant density ng
-P[1, :] *= NI0  # Initial ni
-P[2, :] *= 0.0  # Initial vi
-P[3, :] *= TE0  # Initial Te
-P[4, :] *= P[2, :] - J / (A0 * phy_const.e * P[1, :])  # Initial Ve
+P[1, :] *= NI0*XI1  # Initial n1
+P[2, :] *= NI0*XI2_02  # Initial n02
+P[3, :] *= NI0*XI2_12  # Initial n12
+P[4, :] *= 0.0  # Initial v1
+P[5, :] *= 0.0  # Initial v02
+P[6, :] *= 0.0  # Initial v12
+P[7, :] *= TE0  # Initial Te
+P[8, :] *= (P[1, :]*P[4, :] + 2*(P[2, :]*P[5, :]) + 2*(P[3, :]*P[6, :])) - J / (A0 * phy_const.e * (P[1, :]+2*(P[2, :]+P[3, :])))  # Initial Ve
 
 # We initialize the conservative variables
 PrimToCons(P, U)
