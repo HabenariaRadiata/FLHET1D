@@ -625,9 +625,8 @@ def compute_I(P, V):
 @njit
 def SetInlet(P_In, U_ghost, P_ghost, J=0.0, moment=1):
 
-    U_Bohm1 = np.sqrt(5 * phy_const.e * P_In[4] / (3*M))
-    U_Bohm02 = np.sqrt(2)*np.sqrt(5 * phy_const.e * P_In[5] / (3*M))
-    U_Bohm12 = np.sqrt(2)*np.sqrt(5 * phy_const.e * P_In[6] / (3*M))
+    U_Bohm1 = np.sqrt(5 * phy_const.e * P_In[7] / (3*M))
+    U_Bohm2 = np.sqrt(2)*np.sqrt(5 * phy_const.e * P_In[7] / (3*M))
 
     if P_In[1] * P_In[4] < 0.0:
         U_ghost[0] = (mdot - M * P_In[1] * P_In[4] * A0) / (A0 * VG)
@@ -649,8 +648,8 @@ def SetInlet(P_In, U_ghost, P_ghost, J=0.0, moment=1):
     U_ghost[3] = P_In[3] * M
 
     U_ghost[4] = -2.0 * P_In[1] * U_Bohm1 * M - P_In[1] * P_In[4] * M
-    U_ghost[5] = -2.0 * P_In[2] * U_Bohm1 * M - P_In[2] * P_In[5] * M
-    U_ghost[6] = -2.0 * P_In[3] * U_Bohm1 * M - P_In[3] * P_In[6] * M
+    U_ghost[5] = -2.0 * P_In[2] * U_Bohm2 * M - P_In[2] * P_In[5] * M
+    U_ghost[6] = -2.0 * P_In[3] * U_Bohm2 * M - P_In[3] * P_In[6] * M
 
     U_ghost[7] = 3.0 / 2.0 * (P_In[1]+2*P_In[2]+P_In[3]) * phy_const.e * P_In[7]
 
@@ -949,6 +948,8 @@ if TIMESCHEME == "TVDRK3":
         # Set the boundaries
         SetInlet(P[:, 0], U_Inlet, P_Inlet, J)
         SetOutlet(P[:, -1], U_Outlet, P_Outlet, J)
+        print(P[0, :], P[1, :], P[2, :], P[3, :], P[4,:], P[5,:], P[6,:], P[7,:], P[8,:])
+        break
         # Compute the Fluxes in the center of the cell
         InviscidFlux(np.concatenate([P_Inlet, P, P_Outlet], axis=1), F_cell)
         # Compute the convective Delta t (Only in the first step)
@@ -961,7 +962,7 @@ if TIMESCHEME == "TVDRK3":
             F_cell,
             F_interf,
         )
-        print(F_interf[6, :], F_interf[7, :])
+
         # Compute the source in the center of the cell
         Source(P, S)
 
