@@ -662,8 +662,7 @@ def SetInlet(P_In, U_ghost, P_ghost, J=0.0, moment=1):
     P_ghost[5] = U_ghost[5] / U_ghost[2]  # U02
     P_ghost[6] = U_ghost[6] / U_ghost[3]  # U12
     P_ghost[7] = 2.0 / 3.0 * U_ghost[7] / (phy_const.e * (P_ghost[1]+2*P_ghost[2]+P_ghost[3]))  # Te
-    P_ghost[8] = (P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6])) - J / (A0 * phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # ve
-
+    P_ghost[8] = (P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6]))/(P_ghost[1]+2*(P_ghost[2]+P_ghost[3])) - J / (A0 * phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # ve
 
 @njit
 def SetOutlet(P_In, U_ghost, P_ghost, J=0.0):
@@ -948,8 +947,7 @@ if TIMESCHEME == "TVDRK3":
         # Set the boundaries
         SetInlet(P[:, 0], U_Inlet, P_Inlet, J)
         SetOutlet(P[:, -1], U_Outlet, P_Outlet, J)
-        print(P[0, :], P[1, :], P[2, :], P[3, :], P[4,:], P[5,:], P[6,:], P[7,:], P[8,:])
-        break
+
         # Compute the Fluxes in the center of the cell
         InviscidFlux(np.concatenate([P_Inlet, P, P_Outlet], axis=1), F_cell)
         # Compute the convective Delta t (Only in the first step)
