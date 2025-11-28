@@ -365,6 +365,7 @@ def Source(P, S):
     n1 = P[1, :]
     n02 = P[2, :]
     n12 = P[3, :]
+    ne = n1 + 2*(n02 + n12)
     u1 = P[4, :]
     u02 = P[5, :]
     u12 = P[6, :]
@@ -440,35 +441,43 @@ def Source(P, S):
         phy_const.e * ((n1+2*(n02+n12)) * Te), d=Delta_x
     )  # To be used with 5./2 and + div_p*ve below
 
+    div_xi1 = gradient(n1/ne, d=Delta_x)
+    div_xi02 = gradient(2*n02/ne, d=Delta_x)
+    div_xi12 = gradient(2*n12/ne, d=Delta_x)
+        
+
     # Continuity
-    S[0, :] = (-ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K01[:] - ng[:] * (n1[:]+ 2*(n02[:]+n12[:])) * K02[:] + nu_iw[:] * (n1[:]+2*(n02[:]+n12[:]))) * M  # Gas Density
-    S[1, :] = (ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K01[:] - n1[:] * (n1[:] + 2*(n02[:]+n12[:])) * K12[:] - nu_iw[:] * (n1[:]+2*(n02[:]+n12[:]))) * M  # Singly Ion Density
-    S[2, :] = (ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K02[:]) * M # Doubly Ion Density
-    S[3, :] = (n1[:] * (n1[:] + 2*(n02[:]+n12[:])) * K12[:]) * M # Doubly Ion Density
+    S[0, :] = (-ng[:] * ne[:] * K01[:] - ng[:] * ne[:] * K02[:] + nu_iw[:] * ne[:]) * M  # Gas Density
+    S[1, :] = (ng[:] * ne[:] * K01[:] - n1[:] * ne[:] * K12[:] - nu_iw[:] * n1[:]) * M  # Singly Ion Density
+    S[2, :] = (ng[:] * ne[:] * K02[:]) * M # Doubly Ion Density
+    S[3, :] = (n1[:] * ne[:] * K12[:]) * M # Doubly Ion Density
 
     # Momentum - MISSING pressure p dx(Zk nk/ne)
     S[4, :] = (
-        ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K01[:] * VG
-        - n1[:] * (n1[:] + 2*(n02[:]+n12[:])) * K12[:] * u1[:]
+          ng[:] * ne[:] * K01[:] * VG
+        - n1[:] * ne[:] * K12[:] * u1[:]
         - (phy_const.e / (mu_eff[:] * M)) * n1[:] * ve[:]
-        - nu_iw[:] * (n1[:]+2*(n02[:]+n12[:])) * u1[:]
+        - nu_iw[:] * n1[:] * u1[:]
+        - div_xi1 * phy_const.e * ne[:] * Te[:]
     ) * M  # Singly Ion Momentum
     S[5, :] = (
-        ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K02[:] * VG
+          ng[:] * ne[:] * K02[:] * VG
         - (phy_const.e / (mu_eff[:] * M)) * 2*n02[:] * ve[:]
+        - div_xi02 * phy_const.e * ne[:] * Te[:]
     ) * M  # Doubly Ion Momentum
     S[6, :] = (
-        n1[:] * (n1[:] + 2*(n02[:]+n12[:])) * K12[:] * u1[:]
+          n1[:] * ne[:] * K12[:] * u1[:]
         - (phy_const.e / (mu_eff[:] * M)) * 2*n12[:] * ve[:]
+        - div_xi12 * phy_const.e * ne[:] * Te[:]
     ) * M  # Doubly Ion Momentum
 
     # Energy
     S[7, :] = (
-        - ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K01[:] * epsilonLoss01[:] * phy_const.e
-        - ng[:] * (n1[:]+2*(n02[:]+n12[:])) * K02[:] * epsilonLoss02[:] * phy_const.e
-        - n1[:] * (n1[:] + 2*(n02[:]+n12[:])) * K12[:] * epsilonLoss12[:] * phy_const.e
-        - nu_ew[:] * (n1[:]+2*(n02[:]+n12[:])) * Ew * phy_const.e
-        + (n1[:] + 2*(n02[:] + n12[:])) / mu_eff[:] * (ve[:]) ** 2.0 * phy_const.e
+        - ng[:] * ne[:] * K01[:] * epsilonLoss01[:] * phy_const.e
+        - ng[:] * ne[:] * K02[:] * epsilonLoss02[:] * phy_const.e
+        - n1[:] * ne[:] * K12[:] * epsilonLoss12[:] * phy_const.e
+        - nu_ew[:] * ne[:] * Ew * phy_const.e
+        + ne[:] / mu_eff[:] * (ve[:]) ** 2.0 * phy_const.e
         + div_p * ve
     )
 
