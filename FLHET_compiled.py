@@ -219,15 +219,15 @@ def InviscidFlux(P, F):
     F[2, :] = P[2, :] * P[5, :] * M  # rho_02*v_02
     F[3, :] = P[3, :] * P[6, :] * M  # rho_12*v_12
     F[4, :] = (
-        M * P[1, :] * P[4, :] * P[4, :] + P[1,:]/(P[1, :]+2*(P[2, :] + P[3, :])) * phy_const.e * P[7, :]
+        M * P[1, :] * P[4, :] * P[4, :] + P[1,:] * phy_const.e * P[7, :]
     )  # M*n_1*v_1**2 + 1*n1/(n1+2*(n02+n12))*p_e
     F[5, :] = (
-        M * P[2, :] * P[5, :] * P[5, :] + 2*P[2,:]/(P[1, :]+2*(P[2, :] + P[3, :])) * phy_const.e * P[7, :]
+        M * P[2, :] * P[5, :] * P[5, :] + 2*P[2,:] * phy_const.e * P[7, :]
     )  # M*n_02*v_02**2 + 2*n02/(n1+2*(n02+n12))*p_e
     F[6, :] = (
-        M * P[3, :] * P[6, :] * P[6, :] + 2*P[3,:]/(P[1, :]+2*(P[2, :] + P[3, :])) * phy_const.e * P[7, :]
+        M * P[3, :] * P[6, :] * P[6, :] + 2*P[3,:] * phy_const.e * P[7, :]
     )  # M*n_12*v_12**2 + 2*n12/(n1+2*(n02+n12))*p_e
-    F[7, :] = 5.0 / 2.0 * (P[1, :]+2*(P[2, :]+P[3,:])) * phy_const.e * P[7, :] * P[8, :]  # 5/2n_i*e*T_e*v_e
+    F[7, :] = 5.0 / 2.0 * (P[1, :]+2*(P[2, :]+P[3,:])) * phy_const.e * P[7, :] * P[8, :]  # 5/2n_e*e*T_e*v_e
 
 @njit
 def gradient(y, d):
@@ -961,7 +961,7 @@ if TIMESCHEME == "TVDRK3":
             F_cell,
             F_interf,
         )
-
+        print(F_interf[6, :], F_interf[7, :])
         # Compute the source in the center of the cell
         Source(P, S)
 
