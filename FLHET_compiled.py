@@ -308,7 +308,7 @@ def Source(P, S):
 
         return K0*np.exp(-epsilon/Te)*(np.log(1 + A*Te + B*Te**2))**C
     
-    def computeEpsilonLoss01(Te):
+    def computeEpsilonLoss_neutrals(Te):
         def computeKprocess(Te, K0, epsilon, A, B, C):
             arg = 1 + A * Te + B * Te**2
             arg = np.maximum(arg, 1.0)  # Ensure all values are >= 1
@@ -317,44 +317,13 @@ def Source(P, S):
             return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
         
         K_01 = computeKprocess(Te, 3.713250982402397e-14, 12.13, -0.0017611280968783634, 0.017611683126543775, 0.963776819737781)
-        K_ex1 = computeKprocess(Te, 2.37016128e-14, 8.315, 7.99682247e-02, -5.91358673e-04, 4.51997276e-01)
-        K_ex2 = computeKprocess(Te, 9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
-        K_ex3 = computeKprocess(Te, 1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
-        K_ex4 = computeKprocess(Te, 7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
-
-        return 12.13 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70 + 3*m/M*compute_Kel(Te)*Te) / (K_01)
-    
-    def computeEpsilonLoss02(Te):
-        def computeKprocess(Te, K0, epsilon, A, B, C):
-            arg = 1 + A * Te + B * Te**2
-            arg = np.maximum(arg, 1.0)  # Ensure all values are >= 1
-            # if np.any(arg <= 1):
-            #     arg = 1.0
-            return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
-        
         K_02 = computeKprocess(Te, 2.9877259773209294e-15, 33.1, -0.0010349058788903616, 0.010351220959387678, 0.9986740377564686)
         K_ex1 = computeKprocess(Te, 2.37016128e-14, 8.315, 7.99682247e-02, -5.91358673e-04, 4.51997276e-01)
         K_ex2 = computeKprocess(Te, 9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
         K_ex3 = computeKprocess(Te, 1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
         K_ex4 = computeKprocess(Te, 7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
 
-        return 33.1/2 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70 + 3*m/M*compute_Kel(Te)*Te) / (2*K_02)
-    
-    def computeEpsilonLoss12(Te):
-        def computeKprocess(Te, K0, epsilon, A, B, C):
-            arg = 1 + A * Te + B * Te**2
-            arg = np.maximum(arg, 1.0)  # Ensure all values are >= 1
-            # if np.any(arg <= 1):
-            #     arg = 1.0
-            return K0 * np.exp(-epsilon / Te) * (np.log(arg)) ** C
-        
-        K_12 = computeKprocess(Te, 9.071260705344802e-14, 20.975, -0.000026061685061096907, 0.0002606327354438319, -0.05673357419589643)
-        K_ex1 = computeKprocess(Te, 2.37016128e-14, 8.315, 7.99682247e-02, -5.91358673e-04, 4.51997276e-01)
-        K_ex2 = computeKprocess(Te, 9.02951389e-15, 9.447, 3.12421531e+00, -3.01100074e-02, 5.59327899e-01)
-        K_ex3 = computeKprocess(Te, 1.66394517e-14, 9.917, 2.83412200e+00, -2.66987222e-02, 6.98378384e-01)
-        K_ex4 = computeKprocess(Te, 7.64651071e-15, 11.70, 7.35828827e-01, -5.08912904e-03, 1.39724961e+00)
-
-        return 20.975 + (K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70 + 3*m/M*compute_Kel(Te)*Te) / (K_12)
+        return (K_01*12.13 + K_02*33.1 + K_ex1*8.315 + K_ex2*9.447 + K_ex3*9.917 + K_ex4*11.70 + 3*m/M*compute_Kel(Te)*Te) / (K_01+K_02)
 
 
 
@@ -383,9 +352,7 @@ def Source(P, S):
     K01 = compute_K01(Te)
     K02 = compute_K02(Te)
     K12 = compute_K12(Te)
-    epsilonLoss01 = computeEpsilonLoss01(Te)
-    epsilonLoss02 = computeEpsilonLoss02(Te)
-    epsilonLoss12 = computeEpsilonLoss12(Te)
+    epsilonLoss_ng = computeEpsilonLoss_neutrals(Te)
 
 
     ############################
@@ -445,6 +412,7 @@ def Source(P, S):
     div_xi02 = gradient(2*n02/ne, d=Delta_x)
     div_xi12 = gradient(2*n12/ne, d=Delta_x)
         
+    ############################
 
     # Continuity
     S[0, :] = (-ng[:] * ne[:] * K01[:] - ng[:] * ne[:] * K02[:] + nu_iw[:] * ne[:]) * M  # Gas Density
@@ -473,9 +441,8 @@ def Source(P, S):
 
     # Energy
     S[7, :] = (
-        - ng[:] * ne[:] * K01[:] * epsilonLoss01[:] * phy_const.e
-        - ng[:] * ne[:] * K02[:] * epsilonLoss02[:] * phy_const.e
-        - n1[:] * ne[:] * K12[:] * epsilonLoss12[:] * phy_const.e
+        - ng[:] * ne[:] * (K01[:]+K02[:]) * epsilonLoss_ng[:] * phy_const.e
+        - n1[:] * ne[:] * K12[:] * 20.975 * phy_const.e
         - nu_ew[:] * ne[:] * Ew * phy_const.e
         + ne[:] / mu_eff[:] * (ve[:]) ** 2.0 * phy_const.e
         + div_p * ve
