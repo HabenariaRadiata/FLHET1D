@@ -59,6 +59,7 @@ mdot     = float(physicalParameters["Mass flow"])                     # Mass flo
 Te_Cath  = float(physicalParameters["Temperature Cathode"])           # Electron temperature at the cathode
 NI0      = float(physicalParameters["Initial plasma density"])
 XI1      = float(physicalParameters["Initial fraction singly"])
+Do_doubly =  bool(config.getboolean("Physical Parameters", "Do doubly", fallback=False))
 XI2_02   = float(physicalParameters["Initial fraction doubly 02"])        
 XI2_12   = float(physicalParameters["Initial fraction doubly 12"])        
 TE0      = float(physicalParameters["Initial Temperature"])  
@@ -350,8 +351,12 @@ def Source(P, S):
     #############################
     Kel = compute_Kel(Te)  # Electron - neutral  collision rate     
     K01 = compute_K01(Te)
-    K02 = compute_K02(Te)
-    K12 = compute_K12(Te)
+    if( not Do_doubly ):
+        K02 = np.zeros_like(Te)
+        K12 = np.zeros_like(Te)
+    else:
+        K02 = compute_K02(Te)
+        K12 = compute_K12(Te)
     epsilonLoss_ng = computeEpsilonLoss_neutrals(Te)
 
 
@@ -620,11 +625,12 @@ def SetInlet(P_In, U_ghost, P_ghost, J=0.0, moment=1):
     P_ghost[2] = U_ghost[2] / M  # n02
     P_ghost[3] = U_ghost[3] / M  # n12
 
-    P_ghost[4] = U_ghost[4] / U_ghost[1]  # U1
-    P_ghost[5] = U_ghost[5] / U_ghost[2]  # U02
-    P_ghost[6] = U_ghost[6] / U_ghost[3]  # U12
+
+    P_ghost[4] = np.where(U_ghost[1] == 0.0, 0.0, U_ghost[4] / U_ghost[1])
+    P_ghost[5] = np.where(U_ghost[2] == 0.0, 0.0, U_ghost[5] / U_ghost[2])
+    P_ghost[6] = np.where(U_ghost[3] == 0.0, 0.0, U_ghost[6] / U_ghost[3])
     P_ghost[7] = 2.0 / 3.0 * U_ghost[7] / (phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # Te
-    P_ghost[8] = (P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6]))/(P_ghost[1]+2*(P_ghost[2]+P_ghost[3])) - J / (A0 * phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # ve
+    P_ghost[8] = ((P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6])) - J / (A0 * phy_const.e)) / (P_ghost[1]+2*(P_ghost[2]+P_ghost[3]))  # ve
 
 @njit
 def SetOutlet(P_In, U_ghost, P_ghost, J=0.0):
@@ -642,11 +648,11 @@ def SetOutlet(P_In, U_ghost, P_ghost, J=0.0):
     P_ghost[1] = U_ghost[1] / M  # n1
     P_ghost[2] = U_ghost[2] / M  # n02
     P_ghost[3] = U_ghost[3] / M  # n12
-    P_ghost[4] = U_ghost[4] / U_ghost[1]  # U1
-    P_ghost[5] = U_ghost[5] / U_ghost[2]  # U02
-    P_ghost[6] = U_ghost[6] / U_ghost[3]  # U12
+    P_ghost[4] = np.where(U_ghost[1] == 0.0, 0.0, U_ghost[4] / U_ghost[1]) # U1
+    P_ghost[5] = np.where(U_ghost[2] == 0.0, 0.0, U_ghost[5] / U_ghost[2]) # U02
+    P_ghost[6] = np.where(U_ghost[3] == 0.0, 0.0, U_ghost[6] / U_ghost[3]) # U12
     P_ghost[7] = 2.0 / 3.0 * U_ghost[7] / (phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # Te
-    P_ghost[8] = (P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6]))/(P_ghost[1]+2*(P_ghost[2]+P_ghost[3])) - J / (A0 * phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # ve
+    P_ghost[8] = ((P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6])) - J / (A0 * phy_const.e)) / (P_ghost[1]+2*(P_ghost[2]+P_ghost[3]))  # ve
 
 
 ##########################################################
@@ -675,7 +681,7 @@ def computeMaxEigenVal_i1(P):
 @njit
 def computeMaxEigenVal_i02(P):
 
-    U_Bohm = np.sqrt(5 * phy_const.e * P[7, :] / (3 * M))
+    U_Bohm = np.sqrt(2)*np.sqrt(5 * phy_const.e * P[7, :] / (3 * M))
 
     # return [max(l1, l2) for l1, l2 in zip(abs(U_Bohm - P[2,:]), abs(U_Bohm + P[2,:]))]
     return np.maximum(np.abs(U_Bohm - P[5, :]), np.abs(U_Bohm + P[5, :]))
@@ -684,7 +690,7 @@ def computeMaxEigenVal_i02(P):
 @njit
 def computeMaxEigenVal_i12(P):
 
-    U_Bohm = np.sqrt(5 * phy_const.e * P[7, :] / (3 * M))
+    U_Bohm = np.sqrt(2)*np.sqrt(5 * phy_const.e * P[7, :] / (3 * M))
 
     # return [max(l1, l2) for l1, l2 in zip(abs(U_Bohm - P[2,:]), abs(U_Bohm + P[2,:]))]
     return np.maximum(np.abs(U_Bohm - P[6, :]), np.abs(U_Bohm + P[6, :]))
@@ -914,7 +920,7 @@ if TIMESCHEME == "TVDRK3":
         InviscidFlux(np.concatenate([P_Inlet, P, P_Outlet], axis=1), F_cell)
         # Compute the convective Delta t (Only in the first step)
         Delta_t = ComputeDelta_t(np.concatenate([P_Inlet, P, P_Outlet], axis=1))
-
+        print(Delta_t)
         # Compute the Numerical at the interfaces
         NumericalFlux(
             np.concatenate([P_Inlet, P, P_Outlet], axis=1),
@@ -1038,7 +1044,7 @@ if TIMESCHEME == "TVDRK3":
 
         # Compute the primitive vars for next step
         ConsToPrim(U, P, J)
-
+        print(J)
         # Compute RLC Circuit
         if Circuit:
             dJdt = (J - J0) / Delta_t
