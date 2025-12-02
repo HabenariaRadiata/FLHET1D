@@ -420,23 +420,23 @@ def Source(P, S):
     S[2, :] = (ng[:] * ne[:] * K02[:]) * M # Doubly Ion Density
     S[3, :] = (n1[:] * ne[:] * K12[:]) * M # Doubly Ion Density
 
-    # Momentum - MISSING pressure p dx(Zk nk/ne)
+    # Momentum
     S[4, :] = (
           ng[:] * ne[:] * K01[:] * VG
         - n1[:] * ne[:] * K12[:] * u1[:]
         - (phy_const.e / (mu_eff[:] * M)) * n1[:] * ve[:]
         - nu_iw[:] * n1[:] * u1[:]
-        - div_xi1 * phy_const.e * ne[:] * Te[:]
+        + div_xi1 * phy_const.e * ne[:] * Te[:]
     ) * M  # Singly Ion Momentum
     S[5, :] = (
           ng[:] * ne[:] * K02[:] * VG
         - (phy_const.e / (mu_eff[:] * M)) * 2*n02[:] * ve[:]
-        - div_xi02 * phy_const.e * ne[:] * Te[:]
+        + div_xi02 * phy_const.e * ne[:] * Te[:]
     ) * M  # Doubly Ion Momentum
     S[6, :] = (
           n1[:] * ne[:] * K12[:] * u1[:]
         - (phy_const.e / (mu_eff[:] * M)) * 2*n12[:] * ve[:]
-        - div_xi12 * phy_const.e * ne[:] * Te[:]
+        + div_xi12 * phy_const.e * ne[:] * Te[:]
     ) * M  # Doubly Ion Momentum
 
     # Energy
