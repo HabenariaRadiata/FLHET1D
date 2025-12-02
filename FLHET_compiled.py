@@ -206,9 +206,9 @@ def ConsToPrim(U, P, J=0.0):
     P[1, :] = U[1, :] / M  # n1
     P[2, :] = U[2, :] / M  # n02
     P[3, :] = U[3, :] / M  # n12
-    P[4, :] = U[4, :] / U[1, :]  # U1 = rhoU1/rho1
-    P[5, :] = U[5, :] / U[2, :]  # U02 = rhoU02/rho02
-    P[6, :] = U[6, :] / U[3, :]  # U12 = rhoU12/rho12
+    P[4, :] = np.where(U[1, :] == 0.0, 0.0, U[4, :] / U[1, :])
+    P[5, :] = np.where(U[2, :] == 0.0, 0.0, U[5, :] / U[2, :])
+    P[6, :] = np.where(U[3, :] == 0.0, 0.0, U[6, :] / U[3, :])
 
     P[7, :] = 2.0 / 3.0 * U[7, :] / (phy_const.e * (P[1, :] + 2*(P[2, :] + P[3, :])))  # Te
     P[8, :] = ((P[4, :]*P[1, :]+2*(P[5, :]*P[2, :]+P[6, :]*P[3, :])) - J / (A0 * phy_const.e)) / (P[1, :] + 2*(P[2, :] + P[3, :]))  # ve
@@ -821,7 +821,7 @@ P[4, :] *= 0.0  # Initial v1
 P[5, :] *= 0.0  # Initial v02
 P[6, :] *= 0.0  # Initial v12
 P[7, :] *= TE0  # Initial Te
-P[8, :] *= (P[1, :]*P[4, :] + 2*(P[2, :]*P[5, :]) + 2*(P[3, :]*P[6, :])) - J / (A0 * phy_const.e * (P[1, :]+2*(P[2, :]+P[3, :])))  # Initial Ve
+P[8, :] *= ((P[1, :]*P[4, :] + 2*(P[2, :]*P[5, :] + P[3, :]*P[6, :])) - J / (A0 * phy_const.e)) / (P[1, :]+2*(P[2, :]+P[3, :]))  # Initial Ve
 
 # We initialize the conservative variables
 PrimToCons(P, U)
