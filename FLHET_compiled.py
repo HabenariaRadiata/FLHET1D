@@ -651,7 +651,7 @@ def SetOutlet(P_In, U_ghost, P_ghost, J=0.0):
     P_ghost[5] = U_ghost[5] / U_ghost[2]  # U02
     P_ghost[6] = U_ghost[6] / U_ghost[3]  # U12
     P_ghost[7] = 2.0 / 3.0 * U_ghost[7] / (phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # Te
-    P_ghost[8] = (P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6])) - J / (A0 * phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # ve
+    P_ghost[8] = (P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6]))/(P_ghost[1]+2*(P_ghost[2]+P_ghost[3])) - J / (A0 * phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # ve
 
 
 ##########################################################
