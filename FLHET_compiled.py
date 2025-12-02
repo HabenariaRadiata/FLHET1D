@@ -595,20 +595,15 @@ def SetInlet(P_In, U_ghost, P_ghost, J=0.0, moment=1):
     U_Bohm1 = np.sqrt(5 * phy_const.e * P_In[7] / (3*M))
     U_Bohm2 = np.sqrt(2)*np.sqrt(5 * phy_const.e * P_In[7] / (3*M))
 
+    U_ghost[0] = mdot / (A0 * VG)
     if P_In[1] * P_In[4] < 0.0:
-        U_ghost[0] = (mdot - M * P_In[1] * P_In[4] * A0) / (A0 * VG)
-    else:
-        U_ghost[0] = mdot / (A0 * VG)
+        U_ghost[0] = U_ghost[0] - (M * P_In[1] * P_In[4] * A0) / (A0 * VG)
 
     if P_In[2] * P_In[5] < 0.0:
-        U_ghost[0] = (mdot - M * P_In[2] * P_In[5] * A0) / (A0 * VG)
-    else:
-        U_ghost[0] = mdot / (A0 * VG)
+        U_ghost[0] = U_ghost[0] - (M * P_In[2] * P_In[5] * A0) / (A0 * VG)
 
     if P_In[3] * P_In[6] < 0.0:
-        U_ghost[0] = (mdot - M * P_In[3] * P_In[6] * A0) / (A0 * VG)
-    else:
-        U_ghost[0] = mdot / (A0 * VG)
+        U_ghost[0] = U_ghost[0] - (M * P_In[3] * P_In[6] * A0) / (A0 * VG)
 
     U_ghost[1] = P_In[1] * M
     U_ghost[2] = P_In[2] * M
@@ -618,7 +613,7 @@ def SetInlet(P_In, U_ghost, P_ghost, J=0.0, moment=1):
     U_ghost[5] = -2.0 * P_In[2] * U_Bohm2 * M - P_In[2] * P_In[5] * M
     U_ghost[6] = -2.0 * P_In[3] * U_Bohm2 * M - P_In[3] * P_In[6] * M
 
-    U_ghost[7] = 3.0 / 2.0 * (P_In[1]+2*P_In[2]+P_In[3]) * phy_const.e * P_In[7]
+    U_ghost[7] = 3.0 / 2.0 * (P_In[1]+2*(P_In[2]+P_In[3])) * phy_const.e * P_In[7]
 
     P_ghost[0] = U_ghost[0] / M  # ng
     P_ghost[1] = U_ghost[1] / M  # n1
@@ -628,7 +623,7 @@ def SetInlet(P_In, U_ghost, P_ghost, J=0.0, moment=1):
     P_ghost[4] = U_ghost[4] / U_ghost[1]  # U1
     P_ghost[5] = U_ghost[5] / U_ghost[2]  # U02
     P_ghost[6] = U_ghost[6] / U_ghost[3]  # U12
-    P_ghost[7] = 2.0 / 3.0 * U_ghost[7] / (phy_const.e * (P_ghost[1]+2*P_ghost[2]+P_ghost[3]))  # Te
+    P_ghost[7] = 2.0 / 3.0 * U_ghost[7] / (phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # Te
     P_ghost[8] = (P_ghost[1]*P_ghost[4]+2*(P_ghost[2]*P_ghost[5]+P_ghost[3]*P_ghost[6]))/(P_ghost[1]+2*(P_ghost[2]+P_ghost[3])) - J / (A0 * phy_const.e * (P_ghost[1]+2*(P_ghost[2]+P_ghost[3])))  # ve
 
 @njit
@@ -832,7 +827,7 @@ PrimToCons(P, U)
 #                                                                                        #
 ##########################################################################################
 print("Starting the simulation with time scheme: ", TIMESCHEME)
-
+temp_count = 0
 if TIMESCHEME == "Forward Euler":
     J = compute_I(P, V)
     while time < TIMEFINAL:
@@ -1064,6 +1059,7 @@ if TIMESCHEME == "TVDRK3":
             # Change the Voltage
             V = V0 - X_Volt0[0]
         time += Delta_t
+        temp_count += 1
         if (iter %SAVERATE) ==0:
             filename = Results + "time_vec_njit.dat"
             ttime_intermediate = ttime.time()
