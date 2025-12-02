@@ -920,7 +920,6 @@ if TIMESCHEME == "TVDRK3":
         InviscidFlux(np.concatenate([P_Inlet, P, P_Outlet], axis=1), F_cell)
         # Compute the convective Delta t (Only in the first step)
         Delta_t = ComputeDelta_t(np.concatenate([P_Inlet, P, P_Outlet], axis=1))
-        print(Delta_t)
         # Compute the Numerical at the interfaces
         NumericalFlux(
             np.concatenate([P_Inlet, P, P_Outlet], axis=1),
@@ -1044,7 +1043,6 @@ if TIMESCHEME == "TVDRK3":
 
         # Compute the primitive vars for next step
         ConsToPrim(U, P, J)
-        print(J)
         # Compute RLC Circuit
         if Circuit:
             dJdt = (J - J0) / Delta_t
