@@ -561,11 +561,11 @@ def compute_I(P, V):
     )
 
     if anode_potential:
-        Te_anode = P[3, 0]  # Get the Te at the anode\
+        Te_anode = P[7, 0]  # Get the Te at the anode\
         # print("Te_anode = {} eV".format(Te_anode))
         Ce = (8 * phy_const.e * Te_anode / (np.pi * phy_const.m_e)) ** 0.5  # Electron thermal speed
         # print("Ce = {:.2f} m/s".format(Ce))
-        Uze = P[4, 0]  # Get the Ue at the anode
+        Uze = P[8, 0]  # Get the Ue at the anode
         # print("Uze = {:.2f} m/s".format(Uze))
         try:
             if (Uze == 0.0) or (Ce == 0.0):
